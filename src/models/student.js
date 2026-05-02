@@ -1,0 +1,84 @@
+const { DataTypes } = require("sequelize");
+
+module.exports = (sequelize) => {
+  const Student = sequelize.define(
+    "Student",
+    {
+      id: {
+        type: DataTypes.UUID,
+        primaryKey: true,
+        defaultValue: DataTypes.UUIDV4,
+      },
+      user_id: {
+        type: DataTypes.UUID,
+        allowNull: false,
+        references: { model: "users", key: "id" },
+      },
+      class_teacher_id: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        references: { model: "teachers", key: "id" },
+      },
+      admission_number: {
+        type: DataTypes.STRING(20),
+        unique: true,
+        allowNull: false,
+      },
+      date_of_birth: {
+        type: DataTypes.DATEONLY,
+        allowNull: false,
+      },
+      gender: {
+        type: DataTypes.ENUM("male", "female", "other"),
+        allowNull: false,
+      },
+      current_class: {
+        type: DataTypes.STRING(20),
+        allowNull: false,
+      },
+      section: {
+        type: DataTypes.STRING(10),
+        allowNull: true,
+      },
+      roll_number: {
+        type: DataTypes.STRING(20),
+        allowNull: true,
+      },
+      enrollment_date: {
+        type: DataTypes.DATEONLY,
+        defaultValue: DataTypes.NOW,
+      },
+      graduation_year: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+      },
+      blood_group: {
+        type: DataTypes.STRING(5),
+        allowNull: true,
+      },
+      medical_conditions: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
+      emergency_contact_name: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+      },
+      emergency_contact_phone: {
+        type: DataTypes.STRING(20),
+        allowNull: true,
+      },
+      is_alumni: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false,
+      },
+    },
+    {
+      tableName: "students",
+      timestamps: true,
+      underscored: true,
+    }
+  );
+
+  return Student;
+};
