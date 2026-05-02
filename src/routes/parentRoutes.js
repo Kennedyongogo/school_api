@@ -4,6 +4,7 @@ const {
   listParents,
   getParent,
   getMyParentProfile,
+  getMyStudentsFeeOverview,
   createParent,
   updateParent,
   deleteParent,
@@ -14,6 +15,12 @@ const { errorHandler } = require("../middleware/errorHandler");
 const STAFF_ROLES = ["admin", "accountant", "librarian"];
 
 router.get("/me", authenticateUser, authorizeRoles(["parent"]), getMyParentProfile);
+router.get(
+  "/me/students-fee-overview",
+  authenticateUser,
+  authorizeRoles(["parent"]),
+  getMyStudentsFeeOverview
+);
 router.get("/", authenticateUser, authorizeRoles(STAFF_ROLES), listParents);
 router.post("/", authenticateUser, authorizeRoles(STAFF_ROLES), createParent);
 router.get("/:id", authenticateUser, authorizeRoles(STAFF_ROLES), getParent);

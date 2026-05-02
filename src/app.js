@@ -8,6 +8,7 @@ const nodemailer = require("nodemailer");
 const { initializeModels, setupAssociations } = require("./models");
 const { User } = require("./models");
 const { errorHandler } = require("./middleware/errorHandler");
+const { injectSchoolContext } = require("./middleware/schoolContext");
 
 const userRoutes = require("./routes/userRoutes");
 const studentRoutes = require("./routes/studentRoutes");
@@ -15,6 +16,60 @@ const teacherRoutes = require("./routes/teacherRoutes");
 const parentRoutes = require("./routes/parentRoutes");
 const studentParentRoutes = require("./routes/studentParentRoutes");
 const schoolAdminRoutes = require("./routes/schoolAdminRoutes");
+const departmentRoutes = require("./routes/departmentRoutes");
+const gradeLevelRoutes = require("./routes/gradeLevelRoutes");
+const sectionRoutes = require("./routes/sectionRoutes");
+const subjectRoutes = require("./routes/subjectRoutes");
+const classAssignmentRoutes = require("./routes/classAssignmentRoutes");
+const enrollmentRoutes = require("./routes/enrollmentRoutes");
+const examRoutes = require("./routes/examRoutes");
+const examScheduleRoutes = require("./routes/examScheduleRoutes");
+const examQuestionRoutes = require("./routes/examQuestionRoutes");
+const examAttemptRoutes = require("./routes/examAttemptRoutes");
+const studentAnswerRoutes = require("./routes/studentAnswerRoutes");
+const temporaryAnswerRoutes = require("./routes/temporaryAnswerRoutes");
+const proctoringSessionRoutes = require("./routes/proctoringSessionRoutes");
+const proctoringEventRoutes = require("./routes/proctoringEventRoutes");
+const proctoringRecordingRoutes = require("./routes/proctoringRecordingRoutes");
+const academicYearRoutes = require("./routes/academicYearRoutes");
+const semesterRoutes = require("./routes/semesterRoutes");
+const gradingScaleRoutes = require("./routes/gradingScaleRoutes");
+const assessmentExamTypeRoutes = require("./routes/assessmentExamTypeRoutes");
+const gradeFormulaRoutes = require("./routes/gradeFormulaRoutes");
+const studentExamResultRoutes = require("./routes/studentExamResultRoutes");
+const gradingWorkflowRoutes = require("./routes/gradingWorkflowRoutes");
+const realTimeTrackingRoutes = require("./routes/realTimeTrackingRoutes");
+const attendanceTrackingRoutes = require("./routes/attendanceTrackingRoutes");
+const examSessionLogRoutes = require("./routes/examSessionLogRoutes");
+const syllabusRoutes = require("./routes/syllabusRoutes");
+const syllabusChapterRoutes = require("./routes/syllabusChapterRoutes");
+const classSessionRoutes = require("./routes/classSessionRoutes");
+const classAttendanceRoutes = require("./routes/classAttendanceRoutes");
+const teacherAttendanceRoutes = require("./routes/teacherAttendanceRoutes");
+const lessonProgressRoutes = require("./routes/lessonProgressRoutes");
+const onlineSessionTrackingRoutes = require("./routes/onlineSessionTrackingRoutes");
+const schoolReportsRoutes = require("./routes/schoolReportsRoutes");
+const feeStructureRoutes = require("./routes/feeStructureRoutes");
+const academicTermRoutes = require("./routes/academicTermRoutes");
+const installmentPlanRoutes = require("./routes/installmentPlanRoutes");
+const studentInstallmentPlanRoutes = require("./routes/studentInstallmentPlanRoutes");
+const installmentRoutes = require("./routes/installmentRoutes");
+const installmentPaymentRoutes = require("./routes/installmentPaymentRoutes");
+const feeDiscountRoutes = require("./routes/feeDiscountRoutes");
+const paymentReminderRoutes = require("./routes/paymentReminderRoutes");
+const paymentGracePeriodRoutes = require("./routes/paymentGracePeriodRoutes");
+const accountStatusRoutes = require("./routes/accountStatusRoutes");
+const deactivationLogRoutes = require("./routes/deactivationLogRoutes");
+const studentAccountAdminRoutes = require("./routes/studentAccountAdminRoutes");
+const curriculumRoutes = require("./routes/curriculumRoutes");
+const programRoutes = require("./routes/programRoutes");
+const newsRoutes = require("./routes/newsRoutes");
+const schoolEventRoutes = require("./routes/schoolEventRoutes");
+const eventRegistrationRoutes = require("./routes/eventRegistrationRoutes");
+const admissionApplicationRoutes = require("./routes/admissionApplicationRoutes");
+const admissionSettingsRoutes = require("./routes/admissionSettingsRoutes");
+const platformModulesRoutes = require("./routes/platformModulesRoutes");
+const schoolProfileRoutes = require("./routes/schoolProfileRoutes");
 
 const app = express();
 
@@ -22,6 +77,7 @@ const app = express();
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 app.use(cors());
+app.use(injectSchoolContext);
 
 // Static file serving
 const profilesUploadPath = path.join(__dirname, "..", "uploads", "profiles");
@@ -38,6 +94,8 @@ const trainingEventsUploadPath = path.join(__dirname, "..", "uploads", "training
 const grantsUploadPath = path.join(__dirname, "..", "uploads", "grants");
 const partnersUploadPath = path.join(__dirname, "..", "uploads", "partners");
 const marketplaceListingsUploadPath = path.join(__dirname, "..", "uploads", "marketplace-listings");
+const proctoringRecordingsUploadPath = path.join(__dirname, "..", "uploads", "proctoring-recordings");
+const postersUploadPath = path.join(__dirname, "..", "uploads", "posters");
 
 console.log("📁 Upload Paths:");
 console.log(
@@ -98,6 +156,8 @@ app.use("/uploads/training-events", express.static(trainingEventsUploadPath));
 app.use("/uploads/grants", express.static(grantsUploadPath));
 app.use("/uploads/partners", express.static(partnersUploadPath));
 app.use("/uploads/marketplace-listings", express.static(marketplaceListingsUploadPath));
+app.use("/uploads/proctoring-recordings", express.static(proctoringRecordingsUploadPath));
+app.use("/uploads/posters", express.static(postersUploadPath));
 
 // API routes
 console.log("🔗 Registering API routes...");
@@ -114,6 +174,114 @@ app.use("/api/student-parents", studentParentRoutes);
 console.log("✅ /api/student-parents route registered");
 app.use("/api/school-admins", schoolAdminRoutes);
 console.log("✅ /api/school-admins route registered");
+app.use("/api/departments", departmentRoutes);
+console.log("✅ /api/departments route registered");
+app.use("/api/grade-levels", gradeLevelRoutes);
+console.log("✅ /api/grade-levels route registered");
+app.use("/api/sections", sectionRoutes);
+console.log("✅ /api/sections route registered");
+app.use("/api/subjects", subjectRoutes);
+console.log("✅ /api/subjects route registered");
+app.use("/api/class-assignments", classAssignmentRoutes);
+console.log("✅ /api/class-assignments route registered");
+app.use("/api/enrollments", enrollmentRoutes);
+console.log("✅ /api/enrollments route registered");
+app.use("/api/exams", examRoutes);
+console.log("✅ /api/exams route registered");
+app.use("/api/exam-schedules", examScheduleRoutes);
+console.log("✅ /api/exam-schedules route registered");
+app.use("/api/exam-questions", examQuestionRoutes);
+console.log("✅ /api/exam-questions route registered");
+app.use("/api/exam-attempts", examAttemptRoutes);
+console.log("✅ /api/exam-attempts route registered");
+app.use("/api/student-answers", studentAnswerRoutes);
+console.log("✅ /api/student-answers route registered");
+app.use("/api/temporary-answers", temporaryAnswerRoutes);
+console.log("✅ /api/temporary-answers route registered");
+app.use("/api/proctoring-sessions", proctoringSessionRoutes);
+console.log("✅ /api/proctoring-sessions route registered");
+app.use("/api/proctoring-events", proctoringEventRoutes);
+console.log("✅ /api/proctoring-events route registered");
+app.use("/api/proctoring-recordings", proctoringRecordingRoutes);
+console.log("✅ /api/proctoring-recordings route registered");
+app.use("/api/academic-years", academicYearRoutes);
+console.log("✅ /api/academic-years route registered");
+app.use("/api/semesters", semesterRoutes);
+console.log("✅ /api/semesters route registered");
+app.use("/api/grading-scales", gradingScaleRoutes);
+console.log("✅ /api/grading-scales route registered");
+app.use("/api/assessment-exam-types", assessmentExamTypeRoutes);
+console.log("✅ /api/assessment-exam-types route registered");
+app.use("/api/grade-formulas", gradeFormulaRoutes);
+console.log("✅ /api/grade-formulas route registered");
+app.use("/api/student-exam-results", studentExamResultRoutes);
+console.log("✅ /api/student-exam-results route registered");
+app.use("/api/grading", gradingWorkflowRoutes);
+console.log("✅ /api/grading route registered");
+app.use("/api/real-time", realTimeTrackingRoutes);
+console.log("✅ /api/real-time route registered");
+app.use("/api/attendance-tracking", attendanceTrackingRoutes);
+console.log("✅ /api/attendance-tracking route registered");
+app.use("/api/exam-session-logs", examSessionLogRoutes);
+console.log("✅ /api/exam-session-logs route registered");
+app.use("/api/syllabi", syllabusRoutes);
+console.log("✅ /api/syllabi route registered");
+app.use("/api/syllabus-chapters", syllabusChapterRoutes);
+console.log("✅ /api/syllabus-chapters route registered");
+app.use("/api/class-sessions", classSessionRoutes);
+console.log("✅ /api/class-sessions route registered");
+app.use("/api/class-attendances", classAttendanceRoutes);
+console.log("✅ /api/class-attendances route registered");
+app.use("/api/teacher-attendances", teacherAttendanceRoutes);
+console.log("✅ /api/teacher-attendances route registered");
+app.use("/api/lesson-progress", lessonProgressRoutes);
+console.log("✅ /api/lesson-progress route registered");
+app.use("/api/online-session-tracking", onlineSessionTrackingRoutes);
+console.log("✅ /api/online-session-tracking route registered");
+app.use("/api/reports", schoolReportsRoutes);
+console.log("✅ /api/reports route registered");
+app.use("/api/fee-structures", feeStructureRoutes);
+console.log("✅ /api/fee-structures route registered");
+app.use("/api/academic-terms", academicTermRoutes);
+console.log("✅ /api/academic-terms route registered");
+app.use("/api/installment-plans", installmentPlanRoutes);
+console.log("✅ /api/installment-plans route registered");
+app.use("/api/student-installment-plans", studentInstallmentPlanRoutes);
+console.log("✅ /api/student-installment-plans route registered");
+app.use("/api/installments", installmentRoutes);
+console.log("✅ /api/installments route registered");
+app.use("/api/installment-payments", installmentPaymentRoutes);
+console.log("✅ /api/installment-payments route registered");
+app.use("/api/fee-discounts", feeDiscountRoutes);
+console.log("✅ /api/fee-discounts route registered");
+app.use("/api/payment-reminders", paymentReminderRoutes);
+console.log("✅ /api/payment-reminders route registered");
+app.use("/api/payment-grace-periods", paymentGracePeriodRoutes);
+console.log("✅ /api/payment-grace-periods route registered");
+app.use("/api/account-statuses", accountStatusRoutes);
+console.log("✅ /api/account-statuses route registered");
+app.use("/api/deactivation-logs", deactivationLogRoutes);
+console.log("✅ /api/deactivation-logs route registered");
+app.use("/api/student-account-admin", studentAccountAdminRoutes);
+console.log("✅ /api/student-account-admin route registered");
+app.use("/api/curricula", curriculumRoutes);
+console.log("✅ /api/curricula route registered");
+app.use("/api/programs", programRoutes);
+console.log("✅ /api/programs route registered");
+app.use("/api/news", newsRoutes);
+console.log("✅ /api/news route registered");
+app.use("/api/events", schoolEventRoutes);
+console.log("✅ /api/events route registered");
+app.use("/api/event-registrations", eventRegistrationRoutes);
+console.log("✅ /api/event-registrations route registered");
+app.use("/api/admission-applications", admissionApplicationRoutes);
+console.log("✅ /api/admission-applications route registered");
+app.use("/api/admission-settings", admissionSettingsRoutes);
+console.log("✅ /api/admission-settings route registered");
+app.use("/api/platform", platformModulesRoutes);
+console.log("✅ /api/platform route registered (LMS, live classes, notifications, etc.)");
+app.use("/api/school-profile", schoolProfileRoutes);
+console.log("✅ /api/school-profile route registered");
 
 // Forgot password endpoint
 app.post("/api/auth/forgot", async (req, res) => {
@@ -236,6 +404,10 @@ const createUploadDirectories = () => {
     path.join(__dirname, "..", "uploads", "grants"),
     path.join(__dirname, "..", "uploads", "partners"),
     path.join(__dirname, "..", "uploads", "marketplace-listings"),
+    path.join(__dirname, "..", "uploads", "proctoring-recordings"),
+    path.join(__dirname, "..", "uploads", "posters"),
+    path.join(__dirname, "..", "uploads", "posters", "news"),
+    path.join(__dirname, "..", "uploads", "posters", "events"),
   ];
 
   uploadDirs.forEach((dir) => {

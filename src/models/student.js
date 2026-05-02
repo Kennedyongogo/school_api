@@ -72,6 +72,30 @@ module.exports = (sequelize) => {
         type: DataTypes.BOOLEAN,
         defaultValue: false,
       },
+      account_status: {
+        type: DataTypes.ENUM(
+          "active",
+          "pending_payment",
+          "suspended",
+          "deactivated",
+          "expelled",
+          "graduated",
+          "withdrawn"
+        ),
+        defaultValue: "active",
+      },
+      account_status_updated_at: {
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
+      last_deactivation_reason: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
+      reactivation_required: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false,
+      },
     },
     {
       tableName: "students",

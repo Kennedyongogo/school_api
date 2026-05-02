@@ -43,6 +43,7 @@
     "sequelize": "^6.37.7",
     "shapefile": "^0.6.6",
     "sharp": "^0.34.2",
+    "socket.io": "^4.8.3",
     "tesseract.js": "^6.0.1",
     "unzipper": "^0.12.3",
     "uuidv4": "^6.2.13"

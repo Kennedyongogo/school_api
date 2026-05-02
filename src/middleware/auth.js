@@ -1,5 +1,5 @@
 const jwt = require("jsonwebtoken");
-const { User } = require("../models");
+const { User, Student } = require("../models");
 const config = require("../config/config");
 
 exports.authenticateUser = async (req, res, next) => {
@@ -26,7 +26,29 @@ exports.authenticateUser = async (req, res, next) => {
       attributes: { exclude: ["password_hash"] },
     });
 
-    if (!user || !user.is_active) {
+    if (!user) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied, invalid or inactive user",
+      });
+    }
+
+    if (!user.is_active) {
+      if (user.role === "student") {
+        const st = await Student.findOne({
+          where: { user_id: user.id },
+          attributes: ["account_status", "reactivation_required"],
+        });
+        if (st?.account_status === "deactivated") {
+          return res.status(403).json({
+            success: false,
+            message:
+              "Your account has been deactivated due to non-payment. Please contact the school administration or complete outstanding fees.",
+            code: "ACCOUNT_DEACTIVATED",
+            reactivation_required: st.reactivation_required,
+          });
+        }
+      }
       return res.status(403).json({
         success: false,
         message: "Access denied, invalid or inactive user",

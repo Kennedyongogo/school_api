@@ -1,6 +1,8 @@
 const { app, appInitialized } = require("./app");
 const config = require("./config/config");
 const { testConnections } = require("./config/database");
+const { registerOverduePaymentCron } = require("./jobs/overduePaymentCron");
+const { attachSocket } = require("./realtime/socketServer");
 
 const PORT = process.env.PORT || 4000;
 
@@ -10,7 +12,9 @@ async function createServer() {
     await testConnections();
 
     // Wait for app initialization to complete
-    await app.appInitialized;
+    await appInitialized;
+
+    registerOverduePaymentCron();
 
     const server = app.listen(PORT, () => {
       console.log(`🚀 Worker ${process.pid} listening on port ${PORT}`);
@@ -20,6 +24,8 @@ async function createServer() {
       );
       console.log(`🌐 API Base URL: http://localhost:${PORT}/api`);
     });
+
+    attachSocket(server);
 
     // Graceful shutdown for individual workers
     process.on("SIGTERM", () => {
