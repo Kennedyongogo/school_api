@@ -6,6 +6,9 @@ const {
   ProctoringSession,
   ProctoringEvent,
 } = require("../models");
+const { STAFF_ROLES } = require("../constants/userRoles");
+
+const TEACH_OR_STAFF_ROLES = [...STAFF_ROLES, "teacher"];
 
 function pick(body, camel, snake) {
   return body[snake] !== undefined ? body[snake] : body[camel];
@@ -40,7 +43,7 @@ async function verifyRealtimeSession(studentId, sessionId, sessionType) {
 }
 
 async function assertCanReadSession(req, studentId, sessionId, sessionType) {
-  const staff = ["admin", "accountant", "librarian", "teacher"].includes(req.user.role);
+  const staff = TEACH_OR_STAFF_ROLES.includes(req.user.role);
   if (staff) return true;
   if (req.user.role === "student") {
     const profile = await studentProfileFromReq(req);

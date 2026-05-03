@@ -53,6 +53,12 @@ const AccountStatus = require("./accountStatus")(sequelize);
 const PaymentGracePeriod = require("./paymentGracePeriod")(sequelize);
 const DeactivationLog = require("./deactivationLog")(sequelize);
 const Curriculum = require("./curriculum")(sequelize);
+const CurriculumClass = require("./curriculumClass")(sequelize);
+const CurriculumClassLevel = require("./curriculumClassLevel")(sequelize);
+const CurriculumSubject = require("./curriculumSubject")(sequelize);
+const CurriculumSubjectTopic = require("./curriculumSubjectTopic")(sequelize);
+const CurriculumSubjectSubtopic = require("./curriculumSubjectSubtopic")(sequelize);
+const CurriculumSubjectGradingBand = require("./curriculumSubjectGradingBand")(sequelize);
 const Program = require("./program")(sequelize);
 const News = require("./news")(sequelize);
 const SchoolEvent = require("./schoolEvent")(sequelize);
@@ -167,6 +173,12 @@ const models = {
   PaymentGracePeriod,
   DeactivationLog,
   Curriculum,
+  CurriculumClass,
+  CurriculumClassLevel,
+  CurriculumSubject,
+  CurriculumSubjectTopic,
+  CurriculumSubjectSubtopic,
+  CurriculumSubjectGradingBand,
   Program,
   News,
   SchoolEvent,
@@ -238,23 +250,6 @@ const initializeModels = async () => {
     await StudentParent.sync({ force: false, alter: false });
     await SchoolAdmin.sync({ force: false, alter: false });
     await GradeLevel.sync({ force: false, alter: false });
-    await Department.sync({ force: false, alter: false });
-    await Section.sync({ force: false, alter: false });
-    await Subject.sync({ force: false, alter: false });
-    await ClassAssignment.sync({ force: false, alter: false });
-    await Enrollment.sync({ force: false, alter: false });
-    await Exam.sync({ force: false, alter: false });
-    await ExamSchedule.sync({ force: false, alter: false });
-    await ExamQuestion.sync({ force: false, alter: false });
-    await ExamAttempt.sync({ force: false, alter: false });
-    await AttendanceTracking.sync({ force: false, alter: false });
-    await RealTimeActivity.sync({ force: false, alter: false });
-    await ExamSessionLog.sync({ force: false, alter: false });
-    await StudentAnswer.sync({ force: false, alter: false });
-    await TemporaryAnswer.sync({ force: false, alter: false });
-    await ProctoringSession.sync({ force: false, alter: false });
-    await ProctoringEvent.sync({ force: false, alter: false });
-    await ProctoringRecording.sync({ force: false, alter: false });
     await AcademicYear.sync({ force: false, alter: false });
     await Semester.sync({ force: false, alter: false });
     await GradingScale.sync({ force: false, alter: false });
@@ -285,6 +280,12 @@ const initializeModels = async () => {
     await AccountStatus.sync({ force: false, alter: false });
     await DeactivationLog.sync({ force: false, alter: false });
     await Curriculum.sync({ force: false, alter: false });
+    await CurriculumClass.sync({ force: false, alter: false });
+    await CurriculumClassLevel.sync({ force: false, alter: false });
+    await CurriculumSubject.sync({ force: false, alter: false });
+    await CurriculumSubjectTopic.sync({ force: false, alter: false });
+    await CurriculumSubjectSubtopic.sync({ force: false, alter: false });
+    await CurriculumSubjectGradingBand.sync({ force: false, alter: false });
     await Program.sync({ force: false, alter: false });
     await News.sync({ force: false, alter: false });
     await SchoolEvent.sync({ force: false, alter: false });
@@ -734,6 +735,58 @@ const setupAssociations = () => {
 
     Curriculum.hasMany(Program, { foreignKey: "curriculum_id", as: "programs" });
     Program.belongsTo(Curriculum, { foreignKey: "curriculum_id", as: "curriculum" });
+
+    Curriculum.hasMany(CurriculumClass, { foreignKey: "curriculum_id", as: "curriculum_classes" });
+    CurriculumClass.belongsTo(Curriculum, { foreignKey: "curriculum_id", as: "curriculum" });
+
+    Curriculum.hasMany(CurriculumSubject, { foreignKey: "curriculum_id", as: "curriculum_subjects" });
+    CurriculumSubject.belongsTo(Curriculum, { foreignKey: "curriculum_id", as: "curriculum" });
+    CurriculumClass.hasMany(CurriculumClassLevel, {
+      foreignKey: "curriculum_class_id",
+      as: "curriculum_class_levels",
+    });
+    CurriculumClassLevel.belongsTo(CurriculumClass, { foreignKey: "curriculum_class_id", as: "curriculum_class" });
+
+    CurriculumClass.hasMany(CurriculumSubject, { foreignKey: "curriculum_class_id", as: "curriculum_subjects" });
+    CurriculumSubject.belongsTo(CurriculumClass, { foreignKey: "curriculum_class_id", as: "curriculum_class" });
+
+    CurriculumClassLevel.hasMany(CurriculumSubject, {
+      foreignKey: "curriculum_class_level_id",
+      as: "curriculum_subjects",
+    });
+    CurriculumSubject.belongsTo(CurriculumClassLevel, {
+      foreignKey: "curriculum_class_level_id",
+      as: "curriculum_class_level",
+    });
+
+    Subject.hasMany(CurriculumSubject, { foreignKey: "subject_id", as: "curriculum_offerings" });
+    CurriculumSubject.belongsTo(Subject, { foreignKey: "subject_id", as: "catalog_subject" });
+
+    CurriculumSubject.hasMany(CurriculumSubjectTopic, {
+      foreignKey: "curriculum_subject_id",
+      as: "topics",
+    });
+    CurriculumSubjectTopic.belongsTo(CurriculumSubject, {
+      foreignKey: "curriculum_subject_id",
+      as: "curriculum_subject",
+    });
+    CurriculumSubjectTopic.hasMany(CurriculumSubjectSubtopic, {
+      foreignKey: "curriculum_subject_topic_id",
+      as: "subtopics",
+    });
+    CurriculumSubjectSubtopic.belongsTo(CurriculumSubjectTopic, {
+      foreignKey: "curriculum_subject_topic_id",
+      as: "topic",
+    });
+
+    CurriculumSubject.hasMany(CurriculumSubjectGradingBand, {
+      foreignKey: "curriculum_subject_id",
+      as: "grading_bands",
+    });
+    CurriculumSubjectGradingBand.belongsTo(CurriculumSubject, {
+      foreignKey: "curriculum_subject_id",
+      as: "curriculum_subject",
+    });
 
     GradeLevel.hasMany(Program, { foreignKey: "grade_level_id", as: "programs" });
     Program.belongsTo(GradeLevel, { foreignKey: "grade_level_id", as: "grade_level" });

@@ -64,6 +64,8 @@ const storage = multer.diskStorage({
       file.fieldname === "partner_logos"
     ) {
       uploadPath = path.join(__dirname, "..", "..", "uploads", "partners");
+    } else if (file.fieldname === "school_logo") {
+      uploadPath = path.join(__dirname, "..", "..", "uploads", "school-logos");
     } else if (
       file.fieldname === "listing_image" ||
       file.fieldname === "listing_images"
@@ -134,11 +136,12 @@ const fileFilter = (req, file, cb) => {
   const isMenuImageField =
     file.fieldname === "image" || file.fieldname === "menu_image";
   const isProfileImageField = file.fieldname === "profile_image";
+  const isSchoolLogoField = file.fieldname === "school_logo";
 
   // Some phones/providers send image uploads as application/octet-stream.
   // Accept by extension for known image fields.
   if (
-    (isMenuImageField || isProfileImageField) &&
+    (isMenuImageField || isProfileImageField || isSchoolLogoField) &&
     file.mimetype === "application/octet-stream" &&
     hasAllowedImageExtension
   ) {
@@ -223,6 +226,9 @@ const uploadGrantImage = upload.single("grant_image");
 
 // Middleware for partner logo
 const uploadPartnerLogo = upload.single("partner_logo");
+
+// School profile logo (optional single file)
+const uploadSchoolLogos = upload.single("school_logo");
 
 // Middleware for marketplace listing image
 const uploadListingImage = upload.single("listing_image");
@@ -324,6 +330,7 @@ module.exports = {
   uploadJobOpportunityImage,
   uploadGrantImage,
   uploadPartnerLogo,
+  uploadSchoolLogos,
   uploadListingImage,
   uploadMenuImage,
   handleUploadError,

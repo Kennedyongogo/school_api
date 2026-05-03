@@ -6,13 +6,14 @@ const {
   Subject,
   Teacher,
 } = require("../models");
+const { STAFF_ROLES } = require("../constants/userRoles");
 
 async function teacherProfile(req) {
   return Teacher.findOne({ where: { user_id: req.user.id } });
 }
 
 async function assertTeacherOwnsSession(req, session) {
-  const staff = ["admin", "accountant", "librarian"].includes(req.user.role);
+  const staff = STAFF_ROLES.includes(req.user.role);
   if (staff) return true;
   if (req.user.role !== "teacher") return false;
   const t = await teacherProfile(req);

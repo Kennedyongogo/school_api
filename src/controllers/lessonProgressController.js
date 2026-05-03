@@ -1,11 +1,12 @@
 const { LessonProgress, ClassSession, Teacher } = require("../models");
+const { STAFF_ROLES } = require("../constants/userRoles");
 
 async function teacherProfile(req) {
   return Teacher.findOne({ where: { user_id: req.user.id } });
 }
 
 async function assertLessonProgressEditor(req, progress) {
-  const staff = ["admin", "accountant", "librarian"].includes(req.user.role);
+  const staff = STAFF_ROLES.includes(req.user.role);
   if (staff) return true;
   const session = await ClassSession.findByPk(progress.class_session_id);
   if (!session) return false;
@@ -45,7 +46,7 @@ exports.createLessonProgress = async (req, res) => {
     const session = await ClassSession.findByPk(req.body.class_session_id);
     if (!session) return res.status(400).json({ success: false, message: "Invalid class_session_id" });
 
-    const staff = ["admin", "accountant", "librarian"].includes(req.user.role);
+    const staff = STAFF_ROLES.includes(req.user.role);
     if (!staff) {
       if (req.user.role !== "teacher") {
         return res.status(403).json({ success: false, message: "Forbidden" });

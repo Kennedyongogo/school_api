@@ -8,11 +8,11 @@ const {
 const { authenticateUser, authorizeRoles } = require("../middleware/auth");
 const { errorHandler } = require("../middleware/errorHandler");
 
-const STAFF_ROLES = ["admin", "accountant", "librarian"];
+const { STAFF_ROLES, ADMIN_PORTAL_API_ROLES} = require("../constants/userRoles");
 
-router.post("/deactivate", authenticateUser, authorizeRoles(STAFF_ROLES), manualDeactivate);
-router.post("/reactivate", authenticateUser, authorizeRoles(STAFF_ROLES), manualReactivate);
-router.post("/run-overdue-job", authenticateUser, authorizeRoles(STAFF_ROLES), triggerOverdueJob);
+router.post("/deactivate", authenticateUser, authorizeRoles(ADMIN_PORTAL_API_ROLES), manualDeactivate);
+router.post("/reactivate", authenticateUser, authorizeRoles(ADMIN_PORTAL_API_ROLES), manualReactivate);
+router.post("/run-overdue-job", authenticateUser, authorizeRoles(ADMIN_PORTAL_API_ROLES), triggerOverdueJob);
 
 router.use(errorHandler);
 

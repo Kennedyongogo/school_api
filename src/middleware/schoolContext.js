@@ -8,7 +8,9 @@ const injectSchoolContext = async (req, res, next) => {
   try {
     if (!req.school) {
       req.school = await SchoolProfile.findOne({
-        attributes: { exclude: ["email_password"] },
+        attributes: {
+          exclude: ["email_password", "primary_color", "secondary_color", "accent_color"],
+        },
       });
     }
     next();

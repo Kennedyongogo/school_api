@@ -19,12 +19,8 @@ const PUBLIC_ATTRIBUTES = [
   "country",
   "postal_code",
   "logo_url",
-  "logo_dark_url",
   "favicon_url",
   "banner_url",
-  "primary_color",
-  "secondary_color",
-  "accent_color",
   "website",
   "facebook_url",
   "twitter_url",
@@ -58,13 +54,8 @@ const ADMIN_WRITABLE_FIELDS = [
   "instagram_url",
   "linkedin_url",
   "youtube_url",
-  "logo_url",
-  "logo_dark_url",
   "favicon_url",
   "banner_url",
-  "primary_color",
-  "secondary_color",
-  "accent_color",
   "current_academic_year_id",
   "current_term_id",
   "grading_system",
@@ -94,6 +85,15 @@ const ADMIN_WRITABLE_FIELDS = [
   "maintenance_message",
 ];
 
+/** Omit from API responses: branding hex colors not exposed via school profile API. */
+const ADMIN_RESPONSE_EXCLUDE = [
+  "email_password",
+  "primary_color",
+  "secondary_color",
+  "accent_color",
+  "logo_dark_url",
+];
+
 exports.getPublicSchoolInfo = async (req, res) => {
   try {
     const school = await SchoolProfile.findOne({
@@ -108,7 +108,7 @@ exports.getPublicSchoolInfo = async (req, res) => {
 exports.getFullSchoolSettings = async (req, res) => {
   try {
     const school = await SchoolProfile.findOne({
-      attributes: { exclude: ["email_password"] },
+      attributes: { exclude: ADMIN_RESPONSE_EXCLUDE },
       include: [
         { model: AcademicYear, as: "current_academic_year", required: false },
         { model: AcademicTerm, as: "current_term", required: false },
@@ -126,6 +126,21 @@ exports.updateSchoolProfile = async (req, res) => {
     for (const field of ADMIN_WRITABLE_FIELDS) {
       if (req.body[field] !== undefined) updateData[field] = req.body[field];
     }
+
+    if (updateData.founded_year !== undefined) {
+      const v = updateData.founded_year;
+      if (v === "" || v === null) updateData.founded_year = null;
+      else if (typeof v === "string") {
+        const n = parseInt(v, 10);
+        updateData.founded_year = Number.isNaN(n) ? null : n;
+      }
+    }
+
+    const mainLogo = req.file;
+    if (mainLogo?.filename) {
+      updateData.logo_url = `/uploads/school-logos/${mainLogo.filename}`;
+    }
+
     updateData.updated_by = req.userId;
 
     let school = await SchoolProfile.findOne();
@@ -141,7 +156,7 @@ exports.updateSchoolProfile = async (req, res) => {
         ...updateData,
       });
       const full = await SchoolProfile.findByPk(school.id, {
-        attributes: { exclude: ["email_password"] },
+        attributes: { exclude: ADMIN_RESPONSE_EXCLUDE },
         include: [
           { model: AcademicYear, as: "current_academic_year", required: false },
           { model: AcademicTerm, as: "current_term", required: false },
@@ -152,7 +167,7 @@ exports.updateSchoolProfile = async (req, res) => {
 
     await school.update(updateData);
     const refreshed = await SchoolProfile.findByPk(school.id, {
-      attributes: { exclude: ["email_password"] },
+      attributes: { exclude: ADMIN_RESPONSE_EXCLUDE },
       include: [
         { model: AcademicYear, as: "current_academic_year", required: false },
         { model: AcademicTerm, as: "current_term", required: false },

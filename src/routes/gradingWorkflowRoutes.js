@@ -16,7 +16,7 @@ const { authenticateUser, authorizeRoles } = require("../middleware/auth");
 const { errorHandler } = require("../middleware/errorHandler");
 const { checkStudentAccountAccess } = require("../middleware/checkStudentAccountAccess");
 
-const STAFF_ROLES = ["admin", "accountant", "librarian"];
+const { STAFF_ROLES } = require("../constants/userRoles");
 const TEACH_OR_STAFF = [...STAFF_ROLES, "teacher"];
 
 router.get(

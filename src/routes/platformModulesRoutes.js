@@ -5,12 +5,11 @@ const { registerCrud } = require("../utils/makeCrudHandlers");
 const { errorHandler } = require("../middleware/errorHandler");
 const models = require("../models");
 
-const ALL_ROLES = ["admin", "teacher", "student", "parent", "accountant", "librarian"];
-const STAFF_ROLES = ["admin", "accountant", "librarian"];
+const { STAFF_ROLES, ADMIN_PORTAL_API_ROLES, ALL_USER_ROLES } = require("../constants/userRoles");
 const TEACH_OR_STAFF = [...STAFF_ROLES, "teacher"];
 
-const authAll = [authenticateUser, authorizeRoles(ALL_ROLES)];
-const authStaff = [authenticateUser, authorizeRoles(STAFF_ROLES)];
+const authAll = [authenticateUser, authorizeRoles(ALL_USER_ROLES)];
+const authStaff = [authenticateUser, authorizeRoles(ADMIN_PORTAL_API_ROLES)];
 const authTeach = [authenticateUser, authorizeRoles(TEACH_OR_STAFF)];
 
 registerCrud(router, "/live-classes", models.LiveClass, authTeach);

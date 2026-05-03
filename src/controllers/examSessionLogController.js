@@ -1,5 +1,8 @@
 const { Op } = require("sequelize");
 const { ExamSessionLog, ExamAttempt, Student } = require("../models");
+const { STAFF_ROLES } = require("../constants/userRoles");
+
+const TEACH_OR_STAFF_ROLES = [...STAFF_ROLES, "teacher"];
 
 async function studentProfileFromReq(req) {
   return Student.findOne({ where: { user_id: req.user.id } });
@@ -9,8 +12,7 @@ exports.listExamSessionLogs = async (req, res) => {
   try {
     const where = {};
 
-    const staffRoles = ["admin", "accountant", "librarian", "teacher"];
-    if (staffRoles.includes(req.user.role) && !req.query.exam_attempt_id) {
+    if (TEACH_OR_STAFF_ROLES.includes(req.user.role) && !req.query.exam_attempt_id) {
       return res.status(400).json({
         success: false,
         message: "exam_attempt_id query parameter is required",

@@ -9,6 +9,9 @@ const {
   StudentParent,
   Teacher,
 } = require("../models");
+const { STAFF_ROLES } = require("../constants/userRoles");
+
+const TEACH_OR_STAFF_ROLES = [...STAFF_ROLES, "teacher"];
 
 async function teacherProfile(req) {
   return Teacher.findOne({ where: { user_id: req.user.id } });
@@ -22,7 +25,7 @@ const chapterInclude = {
 };
 
 async function assertSyllabusEditor(req, syllabus) {
-  const staff = ["admin", "accountant", "librarian"].includes(req.user.role);
+  const staff = STAFF_ROLES.includes(req.user.role);
   if (staff) return true;
   if (req.user.role !== "teacher") return false;
   const t = await teacherProfile(req);
@@ -32,7 +35,7 @@ async function assertSyllabusEditor(req, syllabus) {
 }
 
 async function assertCanViewClassAssignment(req, classAssignmentId, studentId) {
-  const staff = ["admin", "accountant", "librarian", "teacher"].includes(req.user.role);
+  const staff = TEACH_OR_STAFF_ROLES.includes(req.user.role);
   if (staff) return true;
 
   const ca = await ClassAssignment.findByPk(classAssignmentId);

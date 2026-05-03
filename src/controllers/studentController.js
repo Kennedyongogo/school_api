@@ -1,6 +1,6 @@
 const bcrypt = require("bcryptjs");
-const { Op } = require("sequelize");
 const { sequelize, User, Student, Teacher } = require("../models");
+const { normalizeEmail, normalizeUsername, duplicateUserWhere } = require("../utils/userIdentity");
 
 const userExclude = { exclude: ["password_hash"] };
 
@@ -51,8 +51,38 @@ exports.getMyStudentProfile = async (req, res) => {
   }
 };
 
+/** Users with role `student` who do not yet have a row in `students` (link when creating a student profile). */
+exports.listStudentUsersWithoutProfile = async (req, res) => {
+  try {
+    const users = await User.findAll({
+      where: { role: "student" },
+      attributes: userExclude,
+      include: [
+        {
+          model: Student,
+          as: "student_profile",
+          required: false,
+          attributes: ["id"],
+        },
+      ],
+      order: [["full_name", "ASC"]],
+    });
+    const data = users
+      .filter((u) => !u.student_profile)
+      .map((u) => {
+        const j = u.toJSON();
+        delete j.student_profile;
+        return j;
+      });
+    return res.json({ success: true, data });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 exports.createStudent = async (req, res) => {
   const {
+    user_id: bodyUserId,
     username,
     email,
     password,
@@ -76,24 +106,70 @@ exports.createStudent = async (req, res) => {
     class_teacher_id,
   } = req.body;
 
-  if (
-    !username ||
-    !email ||
-    !password ||
-    !full_name ||
-    !admission_number ||
-    !date_of_birth ||
-    !gender ||
-    !current_class
-  ) {
+  if (!admission_number || !date_of_birth || !gender || !current_class) {
     return res.status(400).json({
       success: false,
-      message:
-        "username, email, password, full_name, admission_number, date_of_birth, gender, and current_class are required",
+      message: "admission_number, date_of_birth, gender, and current_class are required",
     });
   }
 
-  const dup = await User.findOne({ where: { [Op.or]: [{ email }, { username }] } });
+  const studentPayload = {
+    admission_number,
+    date_of_birth,
+    gender,
+    current_class,
+    section,
+    roll_number,
+    enrollment_date,
+    graduation_year,
+    blood_group,
+    medical_conditions,
+    emergency_contact_name,
+    emergency_contact_phone,
+    is_alumni: !!is_alumni,
+    class_teacher_id: class_teacher_id || null,
+  };
+
+  if (bodyUserId) {
+    try {
+      const user = await User.findByPk(bodyUserId);
+      if (!user || user.role !== "student") {
+        return res.status(400).json({
+          success: false,
+          message: "user_id must reference an existing user with role student",
+        });
+      }
+      const existingProfile = await Student.findOne({ where: { user_id: bodyUserId } });
+      if (existingProfile) {
+        return res.status(400).json({
+          success: false,
+          message: "This user already has a student profile",
+        });
+      }
+      const student = await Student.create({
+        user_id: bodyUserId,
+        ...studentPayload,
+      });
+      const created = await Student.findByPk(student.id, {
+        include: [{ model: User, as: "user", attributes: userExclude }],
+      });
+      return res.status(201).json({ success: true, data: created });
+    } catch (error) {
+      return res.status(400).json({ success: false, message: error.message });
+    }
+  }
+
+  if (!username || !email || !password || !full_name) {
+    return res.status(400).json({
+      success: false,
+      message:
+        "Either provide user_id to link an existing student user, or send username, email, password, and full_name to create a new account",
+    });
+  }
+
+  const emailNorm = normalizeEmail(email);
+  const usernameNorm = normalizeUsername(username);
+  const dup = await User.findOne({ where: duplicateUserWhere(email, username) });
   if (dup) {
     return res.status(400).json({ success: false, message: "Email or username already in use" });
   }
@@ -103,8 +179,8 @@ exports.createStudent = async (req, res) => {
     const password_hash = await bcrypt.hash(password, 10);
     const user = await User.create(
       {
-        username,
-        email,
+        username: usernameNorm,
+        email: emailNorm,
         password_hash,
         role: "student",
         full_name,
@@ -118,20 +194,7 @@ exports.createStudent = async (req, res) => {
     const student = await Student.create(
       {
         user_id: user.id,
-        admission_number,
-        date_of_birth,
-        gender,
-        current_class,
-        section,
-        roll_number,
-        enrollment_date,
-        graduation_year,
-        blood_group,
-        medical_conditions,
-        emergency_contact_name,
-        emergency_contact_phone,
-        is_alumni: !!is_alumni,
-        class_teacher_id: class_teacher_id || null,
+        ...studentPayload,
       },
       { transaction: t }
     );
@@ -186,6 +249,8 @@ exports.updateStudent = async (req, res) => {
         for (const key of allowed) {
           if (u[key] !== undefined) userPatch[key] = u[key];
         }
+        if (userPatch.email !== undefined) userPatch.email = normalizeEmail(userPatch.email);
+        if (userPatch.username !== undefined) userPatch.username = normalizeUsername(userPatch.username);
         if (Object.keys(userPatch).length) await user.update(userPatch);
       }
     }

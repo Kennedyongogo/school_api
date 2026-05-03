@@ -10,14 +10,14 @@ const {
 const { authenticateUser, authorizeRoles } = require("../middleware/auth");
 const { errorHandler } = require("../middleware/errorHandler");
 
-const STAFF_ROLES = ["admin", "accountant", "librarian"];
+const { STAFF_ROLES, ADMIN_PORTAL_API_ROLES} = require("../constants/userRoles");
 const TEACH_OR_STAFF = [...STAFF_ROLES, "teacher"];
 
 router.get("/", authenticateUser, authorizeRoles(TEACH_OR_STAFF), listPaymentGracePeriods);
-router.post("/", authenticateUser, authorizeRoles(STAFF_ROLES), createPaymentGracePeriod);
+router.post("/", authenticateUser, authorizeRoles(ADMIN_PORTAL_API_ROLES), createPaymentGracePeriod);
 router.get("/:id", authenticateUser, authorizeRoles(TEACH_OR_STAFF), getPaymentGracePeriod);
-router.put("/:id", authenticateUser, authorizeRoles(STAFF_ROLES), updatePaymentGracePeriod);
-router.delete("/:id", authenticateUser, authorizeRoles(STAFF_ROLES), deletePaymentGracePeriod);
+router.put("/:id", authenticateUser, authorizeRoles(ADMIN_PORTAL_API_ROLES), updatePaymentGracePeriod);
+router.delete("/:id", authenticateUser, authorizeRoles(ADMIN_PORTAL_API_ROLES), deletePaymentGracePeriod);
 
 router.use(errorHandler);
 

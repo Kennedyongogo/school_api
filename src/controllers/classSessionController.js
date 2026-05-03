@@ -9,6 +9,7 @@ const {
   Section,
   User,
 } = require("../models");
+const { STAFF_ROLES } = require("../constants/userRoles");
 
 const sessionIncludes = [
   { model: Subject, as: "subject", attributes: ["id", "name", "code"] },
@@ -20,7 +21,7 @@ async function teacherProfile(req) {
 }
 
 async function assertSessionStaffOrTeacher(req, session) {
-  const staff = ["admin", "accountant", "librarian"].includes(req.user.role);
+  const staff = STAFF_ROLES.includes(req.user.role);
   if (staff) return true;
   if (req.user.role !== "teacher") return false;
   const t = await teacherProfile(req);

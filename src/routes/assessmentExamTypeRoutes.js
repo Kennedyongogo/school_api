@@ -10,14 +10,14 @@ const {
 const { authenticateUser, authorizeRoles } = require("../middleware/auth");
 const { errorHandler } = require("../middleware/errorHandler");
 
-const STAFF_ROLES = ["admin", "accountant", "librarian"];
+const { STAFF_ROLES, ADMIN_PORTAL_API_ROLES} = require("../constants/userRoles");
 const TEACH_OR_STAFF = [...STAFF_ROLES, "teacher"];
 
 router.get("/", authenticateUser, authorizeRoles(TEACH_OR_STAFF), listAssessmentExamTypes);
-router.post("/", authenticateUser, authorizeRoles(STAFF_ROLES), createAssessmentExamType);
+router.post("/", authenticateUser, authorizeRoles(ADMIN_PORTAL_API_ROLES), createAssessmentExamType);
 router.get("/:id", authenticateUser, authorizeRoles(TEACH_OR_STAFF), getAssessmentExamType);
-router.put("/:id", authenticateUser, authorizeRoles(STAFF_ROLES), updateAssessmentExamType);
-router.delete("/:id", authenticateUser, authorizeRoles(STAFF_ROLES), deleteAssessmentExamType);
+router.put("/:id", authenticateUser, authorizeRoles(ADMIN_PORTAL_API_ROLES), updateAssessmentExamType);
+router.delete("/:id", authenticateUser, authorizeRoles(ADMIN_PORTAL_API_ROLES), deleteAssessmentExamType);
 
 router.use(errorHandler);
 

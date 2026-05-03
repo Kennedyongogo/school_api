@@ -1,6 +1,6 @@
 const bcrypt = require("bcryptjs");
-const { Op } = require("sequelize");
 const { sequelize, User, SchoolAdmin } = require("../models");
+const { normalizeEmail, normalizeUsername, duplicateUserWhere } = require("../utils/userIdentity");
 
 const userExclude = { exclude: ["password_hash"] };
 
@@ -53,7 +53,9 @@ exports.createSchoolAdmin = async (req, res) => {
     });
   }
 
-  const dup = await User.findOne({ where: { [Op.or]: [{ email }, { username }] } });
+  const emailNorm = normalizeEmail(email);
+  const usernameNorm = normalizeUsername(username);
+  const dup = await User.findOne({ where: duplicateUserWhere(email, username) });
   if (dup) {
     return res.status(400).json({ success: false, message: "Email or username already in use" });
   }
@@ -68,8 +70,8 @@ exports.createSchoolAdmin = async (req, res) => {
 
     const user = await User.create(
       {
-        username,
-        email,
+        username: usernameNorm,
+        email: emailNorm,
         password_hash,
         role: userRole,
         full_name,
@@ -135,6 +137,8 @@ exports.updateSchoolAdmin = async (req, res) => {
         for (const key of allowed) {
           if (u[key] !== undefined) userPatch[key] = u[key];
         }
+        if (userPatch.email !== undefined) userPatch.email = normalizeEmail(userPatch.email);
+        if (userPatch.username !== undefined) userPatch.username = normalizeUsername(userPatch.username);
         if (Object.keys(userPatch).length) await user.update(userPatch);
       }
     }

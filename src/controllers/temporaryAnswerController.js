@@ -7,6 +7,9 @@ const {
   Student,
   User,
 } = require("../models");
+const { STAFF_ROLES } = require("../constants/userRoles");
+
+const TEACH_OR_STAFF_ROLES = [...STAFF_ROLES, "teacher"];
 
 const userSafe = { attributes: { exclude: ["password_hash"] } };
 
@@ -98,8 +101,7 @@ exports.upsertTemporaryAnswer = async (req, res) => {
     if (!attempt) {
       return res.status(404).json({ success: false, message: "Exam attempt not found" });
     }
-    const staffRoles = ["admin", "accountant", "librarian", "teacher"];
-    const isStaff = staffRoles.includes(req.user.role);
+    const isStaff = TEACH_OR_STAFF_ROLES.includes(req.user.role);
     if (!isStaff && attempt.student?.user_id !== req.user.id) {
       return res.status(403).json({ success: false, message: "Forbidden" });
     }

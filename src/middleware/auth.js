@@ -1,6 +1,15 @@
 const jwt = require("jsonwebtoken");
 const { User, Student } = require("../models");
 const config = require("../config/config");
+const {
+  SUPER_ADMIN_ROLE,
+  STAFF_ROLES,
+  SCHOOL_ADMIN_ROLES,
+} = require("../constants/userRoles");
+
+exports.STAFF_ROLES = STAFF_ROLES;
+exports.SCHOOL_ADMIN_ROLES = SCHOOL_ADMIN_ROLES;
+exports.SUPER_ADMIN_ROLE = SUPER_ADMIN_ROLE;
 
 exports.authenticateUser = async (req, res, next) => {
   const authHeader = req.header("Authorization");
@@ -113,7 +122,7 @@ exports.authorizeRoles = (roles = []) => {
 };
 
 exports.requireSuperAdmin = (req, res, next) => {
-  if (req.userType !== "user" || req.user.role !== "admin") {
+  if (req.userType !== "user" || req.user.role !== SUPER_ADMIN_ROLE) {
     return res.status(403).json({
       success: false,
       message: "Access denied",
@@ -123,10 +132,7 @@ exports.requireSuperAdmin = (req, res, next) => {
 };
 
 exports.requireAdmin = (req, res, next) => {
-  if (
-    req.userType !== "user" ||
-    !["admin", "accountant", "librarian"].includes(req.user.role)
-  ) {
+  if (req.userType !== "user" || !STAFF_ROLES.includes(req.user.role)) {
     return res.status(403).json({
       success: false,
       message: "Access denied",
@@ -136,10 +142,7 @@ exports.requireAdmin = (req, res, next) => {
 };
 
 exports.requireAdminOrHigher = (req, res, next) => {
-  if (
-    req.userType !== "user" ||
-    !["admin", "accountant", "librarian"].includes(req.user.role)
-  ) {
+  if (req.userType !== "user" || !STAFF_ROLES.includes(req.user.role)) {
     return res.status(403).json({
       success: false,
       message: "Access denied",
@@ -151,7 +154,7 @@ exports.requireAdminOrHigher = (req, res, next) => {
 
 exports.verifyAdminOwnership = (userIdParam = "id") => {
   return (req, res, next) => {
-    if (req.user?.role === "admin") {
+    if (req.user?.role && SCHOOL_ADMIN_ROLES.includes(req.user.role)) {
       return next();
     }
 

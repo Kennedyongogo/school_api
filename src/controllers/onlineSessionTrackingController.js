@@ -1,11 +1,12 @@
 const { OnlineSessionTracking, ClassSession, Enrollment, Student, Teacher } = require("../models");
+const { STAFF_ROLES } = require("../constants/userRoles");
 
 async function teacherProfile(req) {
   return Teacher.findOne({ where: { user_id: req.user.id } });
 }
 
 async function assertSessionReader(req, session) {
-  const staff = ["admin", "accountant", "librarian"].includes(req.user.role);
+  const staff = STAFF_ROLES.includes(req.user.role);
   if (staff) return true;
   if (req.user.role === "teacher") {
     const t = await teacherProfile(req);
@@ -16,7 +17,6 @@ async function assertSessionReader(req, session) {
 
 exports.listOnlineSessionTracking = async (req, res) => {
   try {
-    const staffRoles = ["admin", "accountant", "librarian"];
     const where = {};
 
     if (req.user.role === "student") {
@@ -24,7 +24,7 @@ exports.listOnlineSessionTracking = async (req, res) => {
       if (!profile) return res.json({ success: true, data: [] });
       where.student_id = profile.id;
       if (req.query.class_session_id) where.class_session_id = req.query.class_session_id;
-    } else if (staffRoles.includes(req.user.role)) {
+    } else if (STAFF_ROLES.includes(req.user.role)) {
       if (req.query.class_session_id) where.class_session_id = req.query.class_session_id;
       if (req.query.student_id) where.student_id = req.query.student_id;
     } else if (req.user.role === "teacher") {

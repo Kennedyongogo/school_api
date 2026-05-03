@@ -13,58 +13,19 @@ module.exports = (sequelize) => {
         type: DataTypes.STRING(100),
         allowNull: false,
       },
-      code: {
-        type: DataTypes.STRING(20),
-        unique: true,
-        allowNull: false,
-      },
-      type: {
-        type: DataTypes.ENUM(
-          "cambridge",
-          "ib",
-          "american",
-          "british",
-          "national",
-          "montessori",
-          "other"
-        ),
-        allowNull: false,
-      },
       description: {
         type: DataTypes.TEXT,
         allowNull: true,
       },
-      grade_levels: {
-        type: DataTypes.JSONB,
-        defaultValue: [],
+      /** Free-text pathway label (e.g. "CBC", "IGCSE", "844") — set by the school. */
+      type: {
+        type: DataTypes.STRING(120),
+        allowNull: false,
       },
-      subjects: {
-        type: DataTypes.JSONB,
-        defaultValue: [],
-      },
-      duration_years: {
-        type: DataTypes.INTEGER,
-        defaultValue: 12,
-      },
-      features: {
-        type: DataTypes.JSONB,
-        defaultValue: [],
-      },
-      image_url: {
-        type: DataTypes.STRING(500),
+      /** How long this pathway runs until completion (e.g. "6 years", "4 academic years"). */
+      period: {
+        type: DataTypes.STRING(120),
         allowNull: true,
-      },
-      brochure_url: {
-        type: DataTypes.STRING(500),
-        allowNull: true,
-      },
-      is_active: {
-        type: DataTypes.BOOLEAN,
-        defaultValue: true,
-      },
-      display_order: {
-        type: DataTypes.INTEGER,
-        defaultValue: 0,
       },
     },
     {

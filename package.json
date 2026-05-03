@@ -6,7 +6,10 @@
   "scripts": {
     "start": "nodemon src/server.js",
     "start:cluster": "node src/cluster.js",
-    "test": "echo \"No tests specified\" && exit 0"
+    "test": "echo \"No tests specified\" && exit 0",
+    "create-super-admin": "node scripts/createSuperAdmin.js",
+    "test:pg-tcp": "node scripts/testPgTcp.js",
+    "db:add-student-account-columns": "node scripts/addStudentAccountColumns.js"
   },
   "author": "kennedy ongongo",
   "email": "ongongokennedy89@gmail.com",
@@ -23,6 +26,7 @@
     "docx": "^8.5.0",
     "dotenv": "^17.0.0",
     "ejs": "^3.1.10",
+    "exceljs": "^4.4.0",
     "express": "^5.1.0",
     "express-rate-limit": "^7.5.1",
     "fs": "0.0.1-security",
@@ -46,7 +50,8 @@
     "socket.io": "^4.8.3",
     "tesseract.js": "^6.0.1",
     "unzipper": "^0.12.3",
-    "uuidv4": "^6.2.13"
+    "uuidv4": "^6.2.13",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "nodemon": "^3.1.10"

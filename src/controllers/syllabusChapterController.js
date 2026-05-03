@@ -1,11 +1,12 @@
 const { SyllabusChapter, Syllabus, ClassAssignment, Teacher } = require("../models");
+const { STAFF_ROLES } = require("../constants/userRoles");
 
 async function teacherProfile(req) {
   return Teacher.findOne({ where: { user_id: req.user.id } });
 }
 
 async function canEditChapter(req, chapter) {
-  const staff = ["admin", "accountant", "librarian"].includes(req.user.role);
+  const staff = STAFF_ROLES.includes(req.user.role);
   if (staff) return true;
   if (req.user.role !== "teacher") return false;
   const syllabus = await Syllabus.findByPk(chapter.syllabus_id);

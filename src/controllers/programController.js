@@ -10,7 +10,7 @@ exports.listPrograms = async (req, res) => {
     const include =
       req.query.embed === "1"
         ? [
-            { model: Curriculum, as: "curriculum", attributes: ["id", "name", "code", "type"] },
+            { model: Curriculum, as: "curriculum", attributes: ["id", "name", "type", "period"] },
             { model: GradeLevel, as: "grade_level", attributes: ["id", "name"] },
             { model: FeeStructure, as: "fee_structure", attributes: ["id", "name", "amount", "category"] },
           ]

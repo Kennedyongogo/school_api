@@ -9,8 +9,9 @@ const {
 const { authenticateUser, authorizeRoles } = require("../middleware/auth");
 const { errorHandler } = require("../middleware/errorHandler");
 const { checkStudentAccountAccess } = require("../middleware/checkStudentAccountAccess");
+const { STAFF_ROLES } = require("../constants/userRoles");
 
-const TEACH_OR_STAFF = ["admin", "accountant", "librarian", "teacher"];
+const TEACH_OR_STAFF = [...STAFF_ROLES, "teacher"];
 const WITH_STUDENT = [...TEACH_OR_STAFF, "student"];
 
 router.post("/heartbeat", authenticateUser, checkStudentAccountAccess, authorizeRoles(["student"]), postHeartbeat);

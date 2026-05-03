@@ -9,14 +9,13 @@ const {
 } = require("../controllers/schoolAdminController");
 const { authenticateUser, authorizeRoles } = require("../middleware/auth");
 const { errorHandler } = require("../middleware/errorHandler");
+const { STAFF_ROLES, ADMIN_PORTAL_API_ROLES, SCHOOL_ADMIN_ROLES } = require("../constants/userRoles");
 
-const STAFF_READ = ["admin", "accountant", "librarian"];
-
-router.get("/", authenticateUser, authorizeRoles(STAFF_READ), listSchoolAdmins);
-router.post("/", authenticateUser, authorizeRoles(["admin"]), createSchoolAdmin);
-router.get("/:id", authenticateUser, authorizeRoles(STAFF_READ), getSchoolAdmin);
-router.put("/:id", authenticateUser, authorizeRoles(["admin"]), updateSchoolAdmin);
-router.delete("/:id", authenticateUser, authorizeRoles(["admin"]), deleteSchoolAdmin);
+router.get("/", authenticateUser, authorizeRoles(ADMIN_PORTAL_API_ROLES), listSchoolAdmins);
+router.post("/", authenticateUser, authorizeRoles(SCHOOL_ADMIN_ROLES), createSchoolAdmin);
+router.get("/:id", authenticateUser, authorizeRoles(ADMIN_PORTAL_API_ROLES), getSchoolAdmin);
+router.put("/:id", authenticateUser, authorizeRoles(SCHOOL_ADMIN_ROLES), updateSchoolAdmin);
+router.delete("/:id", authenticateUser, authorizeRoles(SCHOOL_ADMIN_ROLES), deleteSchoolAdmin);
 
 router.use(errorHandler);
 
