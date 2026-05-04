@@ -35,18 +35,6 @@ module.exports = (sequelize) => {
         type: DataTypes.DATEONLY,
         defaultValue: DataTypes.NOW,
       },
-      department: {
-        type: DataTypes.STRING(50),
-        allowNull: true,
-      },
-      is_class_teacher: {
-        type: DataTypes.BOOLEAN,
-        defaultValue: false,
-      },
-      class_teacher_of: {
-        type: DataTypes.STRING(20),
-        allowNull: true,
-      },
       salary: {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: true,
@@ -59,8 +47,18 @@ module.exports = (sequelize) => {
         type: DataTypes.STRING(100),
         allowNull: true,
       },
-      awards: {
-        type: DataTypes.TEXT,
+      is_class_teacher: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false,
+      },
+      class_teacher_curriculum_class_id: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        references: { model: "curriculum_classes", key: "id" },
+        onDelete: "SET NULL",
+      },
+      profile_picture: {
+        type: DataTypes.STRING(500),
         allowNull: true,
       },
     },

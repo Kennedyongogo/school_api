@@ -23,6 +23,7 @@ module.exports = (sequelize) => {
         type: DataTypes.TEXT,
         allowNull: true,
       },
+      /** FK → `teachers.id` (Head of department). */
       head_of_department: {
         type: DataTypes.UUID,
         allowNull: true,

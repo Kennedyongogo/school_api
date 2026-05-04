@@ -64,6 +64,10 @@ const storage = multer.diskStorage({
       file.fieldname === "partner_logos"
     ) {
       uploadPath = path.join(__dirname, "..", "..", "uploads", "partners");
+    } else if (file.fieldname === "teacher_profile_picture") {
+      uploadPath = path.join(__dirname, "..", "..", "uploads", "teacher-profiles");
+    } else if (file.fieldname === "student_profile_picture") {
+      uploadPath = path.join(__dirname, "..", "..", "uploads", "student-profiles");
     } else if (file.fieldname === "school_logo") {
       uploadPath = path.join(__dirname, "..", "..", "uploads", "school-logos");
     } else if (
@@ -137,11 +141,13 @@ const fileFilter = (req, file, cb) => {
     file.fieldname === "image" || file.fieldname === "menu_image";
   const isProfileImageField = file.fieldname === "profile_image";
   const isSchoolLogoField = file.fieldname === "school_logo";
+  const isTeacherStudentProfilePic =
+    file.fieldname === "teacher_profile_picture" || file.fieldname === "student_profile_picture";
 
   // Some phones/providers send image uploads as application/octet-stream.
   // Accept by extension for known image fields.
   if (
-    (isMenuImageField || isProfileImageField || isSchoolLogoField) &&
+    (isMenuImageField || isProfileImageField || isSchoolLogoField || isTeacherStudentProfilePic) &&
     file.mimetype === "application/octet-stream" &&
     hasAllowedImageExtension
   ) {
@@ -229,6 +235,9 @@ const uploadPartnerLogo = upload.single("partner_logo");
 
 // School profile logo (optional single file)
 const uploadSchoolLogos = upload.single("school_logo");
+
+const uploadTeacherProfilePicture = upload.single("teacher_profile_picture");
+const uploadStudentProfilePicture = upload.single("student_profile_picture");
 
 // Middleware for marketplace listing image
 const uploadListingImage = upload.single("listing_image");
@@ -331,6 +340,8 @@ module.exports = {
   uploadGrantImage,
   uploadPartnerLogo,
   uploadSchoolLogos,
+  uploadTeacherProfilePicture,
+  uploadStudentProfilePicture,
   uploadListingImage,
   uploadMenuImage,
   handleUploadError,

@@ -11,6 +11,7 @@ const {
 } = require("../controllers/studentController");
 const { authenticateUser, authorizeRoles } = require("../middleware/auth");
 const { errorHandler } = require("../middleware/errorHandler");
+const { uploadStudentProfilePicture, handleUploadError } = require("../middleware/upload");
 
 const { STAFF_ROLES, ADMIN_PORTAL_API_ROLES, SCHOOL_ADMIN_ROLES } = require("../constants/userRoles");
 const TEACH_OR_STAFF = [...STAFF_ROLES, "teacher"];
@@ -23,9 +24,9 @@ router.get(
   authorizeRoles(ADMIN_PORTAL_API_ROLES),
   listStudentUsersWithoutProfile
 );
-router.post("/", authenticateUser, authorizeRoles(ADMIN_PORTAL_API_ROLES), createStudent);
+router.post("/", authenticateUser, authorizeRoles(ADMIN_PORTAL_API_ROLES), uploadStudentProfilePicture, handleUploadError, createStudent);
 router.get("/:id", authenticateUser, authorizeRoles(TEACH_OR_STAFF), getStudent);
-router.put("/:id", authenticateUser, authorizeRoles(ADMIN_PORTAL_API_ROLES), updateStudent);
+router.put("/:id", authenticateUser, authorizeRoles(ADMIN_PORTAL_API_ROLES), uploadStudentProfilePicture, handleUploadError, updateStudent);
 router.delete("/:id", authenticateUser, authorizeRoles(SCHOOL_ADMIN_ROLES), deleteStudent);
 
 router.use(errorHandler);

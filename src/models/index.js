@@ -37,6 +37,10 @@ const ExamSessionLog = require("./examSessionLog")(sequelize);
 const Syllabus = require("./syllabus")(sequelize);
 const SyllabusChapter = require("./syllabusChapter")(sequelize);
 const TeacherAttendance = require("./teacherAttendance")(sequelize);
+const TeacherDepartment = require("./teacherDepartment")(sequelize);
+const TeacherCurriculumJoin = require("./teacherCurriculumJoin")(sequelize);
+const TeacherCurriculumSubject = require("./teacherCurriculumSubject")(sequelize);
+const TeacherTeachingCurriculumClass = require("./teacherTeachingCurriculumClass")(sequelize);
 const ClassSession = require("./classSession")(sequelize);
 const ClassAttendance = require("./classAttendance")(sequelize);
 const LessonProgress = require("./lessonProgress")(sequelize);
@@ -157,6 +161,10 @@ const models = {
   Syllabus,
   SyllabusChapter,
   TeacherAttendance,
+  TeacherDepartment,
+  TeacherCurriculumJoin,
+  TeacherCurriculumSubject,
+  TeacherTeachingCurriculumClass,
   ClassSession,
   ClassAttendance,
   LessonProgress,
@@ -250,6 +258,7 @@ const initializeModels = async () => {
     await StudentParent.sync({ force: false, alter: false });
     await SchoolAdmin.sync({ force: false, alter: false });
     await GradeLevel.sync({ force: false, alter: false });
+    await Department.sync({ force: false, alter: false });
     await AcademicYear.sync({ force: false, alter: false });
     await Semester.sync({ force: false, alter: false });
     await GradingScale.sync({ force: false, alter: false });
@@ -286,6 +295,10 @@ const initializeModels = async () => {
     await CurriculumSubjectTopic.sync({ force: false, alter: false });
     await CurriculumSubjectSubtopic.sync({ force: false, alter: false });
     await CurriculumSubjectGradingBand.sync({ force: false, alter: false });
+    await TeacherDepartment.sync({ force: false, alter: false });
+    await TeacherCurriculumJoin.sync({ force: false, alter: false });
+    await TeacherCurriculumSubject.sync({ force: false, alter: false });
+    await TeacherTeachingCurriculumClass.sync({ force: false, alter: false });
     await Program.sync({ force: false, alter: false });
     await News.sync({ force: false, alter: false });
     await SchoolEvent.sync({ force: false, alter: false });
@@ -761,6 +774,67 @@ const setupAssociations = () => {
 
     Subject.hasMany(CurriculumSubject, { foreignKey: "subject_id", as: "curriculum_offerings" });
     CurriculumSubject.belongsTo(Subject, { foreignKey: "subject_id", as: "catalog_subject" });
+
+    Teacher.belongsToMany(Department, {
+      through: TeacherDepartment,
+      foreignKey: "teacher_id",
+      otherKey: "department_id",
+      as: "departments",
+    });
+    Department.belongsToMany(Teacher, {
+      through: TeacherDepartment,
+      foreignKey: "department_id",
+      otherKey: "teacher_id",
+      as: "staff_teachers",
+    });
+
+    Teacher.belongsToMany(Curriculum, {
+      through: TeacherCurriculumJoin,
+      foreignKey: "teacher_id",
+      otherKey: "curriculum_id",
+      as: "teaching_curricula",
+    });
+    Curriculum.belongsToMany(Teacher, {
+      through: TeacherCurriculumJoin,
+      foreignKey: "curriculum_id",
+      otherKey: "teacher_id",
+      as: "teachers",
+    });
+
+    Teacher.belongsToMany(CurriculumSubject, {
+      through: TeacherCurriculumSubject,
+      foreignKey: "teacher_id",
+      otherKey: "curriculum_subject_id",
+      as: "teaching_curriculum_subjects",
+    });
+    CurriculumSubject.belongsToMany(Teacher, {
+      through: TeacherCurriculumSubject,
+      foreignKey: "curriculum_subject_id",
+      otherKey: "teacher_id",
+      as: "teachers",
+    });
+
+    Teacher.belongsTo(CurriculumClass, {
+      foreignKey: "class_teacher_curriculum_class_id",
+      as: "homeroom_curriculum_class",
+    });
+    CurriculumClass.hasMany(Teacher, {
+      foreignKey: "class_teacher_curriculum_class_id",
+      as: "homeroom_teachers",
+    });
+
+    Teacher.belongsToMany(CurriculumClass, {
+      through: TeacherTeachingCurriculumClass,
+      foreignKey: "teacher_id",
+      otherKey: "curriculum_class_id",
+      as: "teaching_curriculum_classes",
+    });
+    CurriculumClass.belongsToMany(Teacher, {
+      through: TeacherTeachingCurriculumClass,
+      foreignKey: "curriculum_class_id",
+      otherKey: "teacher_id",
+      as: "teachers_teaching_classes",
+    });
 
     CurriculumSubject.hasMany(CurriculumSubjectTopic, {
       foreignKey: "curriculum_subject_id",

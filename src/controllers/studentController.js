@@ -1,19 +1,83 @@
 const bcrypt = require("bcryptjs");
 const { sequelize, User, Student, Teacher } = require("../models");
 const { normalizeEmail, normalizeUsername, duplicateUserWhere } = require("../utils/userIdentity");
+const { parsePagination } = require("../utils/pagination");
+const { convertToRelativePath } = require("../utils/filePath");
+const { unlinkProfilePictureIfExists } = require("../utils/profilePictureStorage");
 
 const userExclude = { exclude: ["password_hash"] };
 
+const studentListIncludes = [
+  { model: User, as: "user", attributes: userExclude },
+  { model: Teacher, as: "class_teacher", required: false, include: [{ model: User, as: "user", attributes: userExclude }] },
+];
+
+function coerceBool(v) {
+  if (typeof v === "boolean") return v;
+  if (typeof v === "string") return v === "true" || v === "1";
+  return !!v;
+}
+
+function normalizeStudentRequestBody(req) {
+  const b = { ...req.body };
+  if (typeof b.user === "string") {
+    try {
+      b.user = JSON.parse(b.user);
+    } catch {
+      b.user = {};
+    }
+  }
+  if (b.is_alumni !== undefined) b.is_alumni = coerceBool(b.is_alumni);
+  if (b.graduation_year !== undefined && b.graduation_year !== "") {
+    const n = parseInt(String(b.graduation_year), 10);
+    if (!Number.isNaN(n)) b.graduation_year = n;
+  } else if (b.graduation_year === "") {
+    b.graduation_year = null;
+  }
+  return b;
+}
+
+function resolveStudentProfilePicture(req, existingStudent) {
+  if (req.file?.path) {
+    const rel = convertToRelativePath(req.file.path);
+    if (existingStudent?.profile_picture && existingStudent.profile_picture !== rel) {
+      unlinkProfilePictureIfExists(existingStudent.profile_picture);
+    }
+    return rel;
+  }
+  if (req.body.profile_picture !== undefined) {
+    const v = req.body.profile_picture;
+    if (v === "" || v === null) {
+      if (existingStudent?.profile_picture) unlinkProfilePictureIfExists(existingStudent.profile_picture);
+      return null;
+    }
+    const s = String(v).trim();
+    return s || null;
+  }
+  return undefined;
+}
+
 exports.listStudents = async (req, res) => {
   try {
-    const rows = await Student.findAll({
-      include: [
-        { model: User, as: "user", attributes: userExclude },
-        { model: Teacher, as: "class_teacher", required: false, include: [{ model: User, as: "user", attributes: userExclude }] },
-      ],
+    const { page, limit, offset } = parsePagination(req);
+    const { count, rows } = await Student.findAndCountAll({
+      include: studentListIncludes,
       order: [["created_at", "DESC"]],
+      limit,
+      offset,
+      distinct: true,
+      subQuery: false,
     });
-    return res.json({ success: true, data: rows });
+    return res.json({
+      success: true,
+      data: rows,
+      pagination: {
+        total: count,
+        page,
+        limit,
+        totalPages: Math.max(1, Math.ceil(count / limit)),
+      },
+    });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -22,10 +86,7 @@ exports.listStudents = async (req, res) => {
 exports.getStudent = async (req, res) => {
   try {
     const row = await Student.findByPk(req.params.id, {
-      include: [
-        { model: User, as: "user", attributes: userExclude },
-        { model: Teacher, as: "class_teacher", required: false, include: [{ model: User, as: "user", attributes: userExclude }] },
-      ],
+      include: studentListIncludes,
     });
     if (!row) {
       return res.status(404).json({ success: false, message: "Student not found" });
@@ -81,6 +142,7 @@ exports.listStudentUsersWithoutProfile = async (req, res) => {
 };
 
 exports.createStudent = async (req, res) => {
+  const body = normalizeStudentRequestBody(req);
   const {
     user_id: bodyUserId,
     username,
@@ -104,7 +166,11 @@ exports.createStudent = async (req, res) => {
     emergency_contact_phone,
     is_alumni,
     class_teacher_id,
-  } = req.body;
+  } = body;
+
+  let profile_picture = null;
+  const picResolved = resolveStudentProfilePicture(req, null);
+  if (picResolved !== undefined) profile_picture = picResolved;
 
   if (!admission_number || !date_of_birth || !gender || !current_class) {
     return res.status(400).json({
@@ -128,6 +194,7 @@ exports.createStudent = async (req, res) => {
     emergency_contact_phone,
     is_alumni: !!is_alumni,
     class_teacher_id: class_teacher_id || null,
+    profile_picture,
   };
 
   if (bodyUserId) {
@@ -218,6 +285,8 @@ exports.updateStudent = async (req, res) => {
       return res.status(404).json({ success: false, message: "Student not found" });
     }
 
+    const body = normalizeStudentRequestBody(req);
+
     const studentFields = [
       "admission_number",
       "date_of_birth",
@@ -236,14 +305,17 @@ exports.updateStudent = async (req, res) => {
     ];
     const patch = {};
     for (const key of studentFields) {
-      if (req.body[key] !== undefined) patch[key] = req.body[key];
+      if (body[key] !== undefined) patch[key] = body[key];
     }
+    const pic = resolveStudentProfilePicture(req, student);
+    if (pic !== undefined) patch.profile_picture = pic;
+
     await student.update(patch);
 
-    if (req.body.user && student.user_id) {
+    if (body.user && student.user_id) {
       const user = await User.findByPk(student.user_id);
       if (user) {
-        const u = req.body.user;
+        const u = body.user;
         const allowed = ["full_name", "phone", "address", "profile_image", "email", "username"];
         const userPatch = {};
         for (const key of allowed) {
@@ -270,6 +342,7 @@ exports.deleteStudent = async (req, res) => {
     if (!student) {
       return res.status(404).json({ success: false, message: "Student not found" });
     }
+    if (student.profile_picture) unlinkProfilePictureIfExists(student.profile_picture);
     await User.destroy({ where: { id: student.user_id } });
     return res.json({ success: true, message: "Student deleted" });
   } catch (error) {

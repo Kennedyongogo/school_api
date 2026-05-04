@@ -97,6 +97,8 @@ const marketplaceListingsUploadPath = path.join(__dirname, "..", "uploads", "mar
 const proctoringRecordingsUploadPath = path.join(__dirname, "..", "uploads", "proctoring-recordings");
 const postersUploadPath = path.join(__dirname, "..", "uploads", "posters");
 const schoolLogosUploadPath = path.join(__dirname, "..", "uploads", "school-logos");
+const teacherProfilesUploadPath = path.join(__dirname, "..", "uploads", "teacher-profiles");
+const studentProfilesUploadPath = path.join(__dirname, "..", "uploads", "student-profiles");
 
 console.log("📁 Upload Paths:");
 console.log(
@@ -142,6 +144,18 @@ console.log(
   fs.existsSync(schoolLogosUploadPath)
 );
 console.log(
+  "  - Teacher profiles:",
+  teacherProfilesUploadPath,
+  "- Exists:",
+  fs.existsSync(teacherProfilesUploadPath)
+);
+console.log(
+  "  - Student profiles:",
+  studentProfilesUploadPath,
+  "- Exists:",
+  fs.existsSync(studentProfilesUploadPath)
+);
+console.log(
   "  - Services:",
   servicesUploadPath,
   "- Exists:",
@@ -166,6 +180,8 @@ app.use("/uploads/marketplace-listings", express.static(marketplaceListingsUploa
 app.use("/uploads/proctoring-recordings", express.static(proctoringRecordingsUploadPath));
 app.use("/uploads/posters", express.static(postersUploadPath));
 app.use("/uploads/school-logos", express.static(schoolLogosUploadPath));
+app.use("/uploads/teacher-profiles", express.static(teacherProfilesUploadPath));
+app.use("/uploads/student-profiles", express.static(studentProfilesUploadPath));
 
 // API routes
 console.log("🔗 Registering API routes...");
@@ -417,6 +433,8 @@ const createUploadDirectories = () => {
     path.join(__dirname, "..", "uploads", "posters", "news"),
     path.join(__dirname, "..", "uploads", "posters", "events"),
     path.join(__dirname, "..", "uploads", "school-logos"),
+    path.join(__dirname, "..", "uploads", "teacher-profiles"),
+    path.join(__dirname, "..", "uploads", "student-profiles"),
   ];
 
   uploadDirs.forEach((dir) => {
