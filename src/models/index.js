@@ -63,6 +63,8 @@ const CurriculumSubject = require("./curriculumSubject")(sequelize);
 const CurriculumSubjectTopic = require("./curriculumSubjectTopic")(sequelize);
 const CurriculumSubjectSubtopic = require("./curriculumSubjectSubtopic")(sequelize);
 const CurriculumSubjectGradingBand = require("./curriculumSubjectGradingBand")(sequelize);
+const CurriculumClassTimetable = require("./curriculumClassTimetable")(sequelize);
+const CurriculumClassTimetableLesson = require("./curriculumClassTimetableLesson")(sequelize);
 const Program = require("./program")(sequelize);
 const News = require("./news")(sequelize);
 const SchoolEvent = require("./schoolEvent")(sequelize);
@@ -187,6 +189,8 @@ const models = {
   CurriculumSubjectTopic,
   CurriculumSubjectSubtopic,
   CurriculumSubjectGradingBand,
+  CurriculumClassTimetable,
+  CurriculumClassTimetableLesson,
   Program,
   News,
   SchoolEvent,
@@ -253,7 +257,7 @@ const initializeModels = async () => {
     console.log("🔄 Creating/updating school system tables...");
     await User.sync({ force: false, alter: false });
     await Teacher.sync({ force: false, alter: false });
-    await Student.sync({ force: false, alter: false });
+    await Student.sync({ force: false, alter: true });
     await Parent.sync({ force: false, alter: false });
     await StudentParent.sync({ force: false, alter: false });
     await SchoolAdmin.sync({ force: false, alter: false });
@@ -299,6 +303,8 @@ const initializeModels = async () => {
     await TeacherCurriculumJoin.sync({ force: false, alter: false });
     await TeacherCurriculumSubject.sync({ force: false, alter: false });
     await TeacherTeachingCurriculumClass.sync({ force: false, alter: false });
+    await CurriculumClassTimetable.sync({ force: false, alter: false });
+    await CurriculumClassTimetableLesson.sync({ force: false, alter: true });
     await Program.sync({ force: false, alter: false });
     await News.sync({ force: false, alter: false });
     await SchoolEvent.sync({ force: false, alter: false });
@@ -409,6 +415,12 @@ const setupAssociations = () => {
 
     Teacher.hasMany(Student, { foreignKey: "class_teacher_id", as: "class_students" });
     Student.belongsTo(Teacher, { foreignKey: "class_teacher_id", as: "class_teacher" });
+
+    Curriculum.hasMany(Student, { foreignKey: "curriculum_id", as: "students" });
+    Student.belongsTo(Curriculum, { foreignKey: "curriculum_id", as: "curriculum" });
+
+    CurriculumClass.hasMany(Student, { foreignKey: "curriculum_class_id", as: "students" });
+    Student.belongsTo(CurriculumClass, { foreignKey: "curriculum_class_id", as: "curriculum_class" });
 
     Department.hasMany(Subject, { foreignKey: "department_id", as: "subjects" });
     Subject.belongsTo(Department, { foreignKey: "department_id", as: "department" });
@@ -834,6 +846,56 @@ const setupAssociations = () => {
       foreignKey: "curriculum_class_id",
       otherKey: "teacher_id",
       as: "teachers_teaching_classes",
+    });
+
+    CurriculumClass.hasMany(CurriculumClassTimetable, {
+      foreignKey: "curriculum_class_id",
+      as: "timetables",
+    });
+    CurriculumClassTimetable.belongsTo(CurriculumClass, {
+      foreignKey: "curriculum_class_id",
+      as: "curriculum_class",
+    });
+    CurriculumClassLevel.hasMany(CurriculumClassTimetable, {
+      foreignKey: "curriculum_class_level_id",
+      as: "timetables",
+    });
+    CurriculumClassTimetable.belongsTo(CurriculumClassLevel, {
+      foreignKey: "curriculum_class_level_id",
+      as: "curriculum_class_level",
+    });
+    AcademicYear.hasMany(CurriculumClassTimetable, {
+      foreignKey: "academic_year_id",
+      as: "curriculum_class_timetables",
+    });
+    CurriculumClassTimetable.belongsTo(AcademicYear, {
+      foreignKey: "academic_year_id",
+      as: "academic_year",
+    });
+    CurriculumClassTimetable.hasMany(CurriculumClassTimetableLesson, {
+      foreignKey: "timetable_id",
+      as: "lessons",
+      onDelete: "CASCADE",
+    });
+    CurriculumClassTimetableLesson.belongsTo(CurriculumClassTimetable, {
+      foreignKey: "timetable_id",
+      as: "timetable",
+    });
+    CurriculumClassTimetableLesson.belongsTo(CurriculumSubject, {
+      foreignKey: "curriculum_subject_id",
+      as: "curriculum_subject",
+    });
+    CurriculumClassTimetableLesson.belongsTo(Teacher, {
+      foreignKey: "teacher_id",
+      as: "teacher",
+    });
+    Teacher.hasMany(CurriculumClassTimetableLesson, {
+      foreignKey: "teacher_id",
+      as: "timetable_lessons",
+    });
+    CurriculumSubject.hasMany(CurriculumClassTimetableLesson, {
+      foreignKey: "curriculum_subject_id",
+      as: "timetable_lessons",
     });
 
     CurriculumSubject.hasMany(CurriculumSubjectTopic, {

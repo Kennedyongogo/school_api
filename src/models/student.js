@@ -32,17 +32,19 @@ module.exports = (sequelize) => {
         type: DataTypes.ENUM("male", "female", "other"),
         allowNull: false,
       },
-      current_class: {
-        type: DataTypes.STRING(20),
-        allowNull: false,
-      },
-      section: {
-        type: DataTypes.STRING(10),
+      /** Pathway / curriculum this student follows (FK). Kept in sync with `curriculum_class_id`. */
+      curriculum_id: {
+        type: DataTypes.UUID,
         allowNull: true,
+        references: { model: "curricula", key: "id" },
+        onDelete: "SET NULL",
       },
-      roll_number: {
-        type: DataTypes.STRING(20),
+      /** Current class band within that curriculum (FK to `curriculum_classes`). */
+      curriculum_class_id: {
+        type: DataTypes.UUID,
         allowNull: true,
+        references: { model: "curriculum_classes", key: "id" },
+        onDelete: "SET NULL",
       },
       enrollment_date: {
         type: DataTypes.DATEONLY,

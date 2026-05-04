@@ -9,6 +9,19 @@ const {
   deleteCurriculum,
 } = require("../controllers/curriculumController");
 const {
+  listTimetableLessonsByDate,
+  listOnlineTimetableLessonsUpcoming,
+  listTeachersForCurriculumTimetable,
+  listCurriculumClassTimetables,
+  createCurriculumClassTimetable,
+  getCurriculumClassTimetable,
+  updateCurriculumClassTimetable,
+  deleteCurriculumClassTimetable,
+  createTimetableLesson,
+  updateTimetableLesson,
+  deleteTimetableLesson,
+} = require("../controllers/curriculumClassTimetableController");
+const {
   listAllCurriculumClasses,
   listAllCurriculumClassLevels,
   listAllCurriculumSubjects,
@@ -59,11 +72,56 @@ router.get("/all-classes", authenticateUser, authorizeRoles(TEACH_OR_STAFF), lis
 router.get("/all-class-levels", authenticateUser, authorizeRoles(TEACH_OR_STAFF), listAllCurriculumClassLevels);
 router.get("/all-subjects", authenticateUser, authorizeRoles(TEACH_OR_STAFF), listAllCurriculumSubjects);
 
+router.get(
+  "/timetable-lessons/by-date",
+  authenticateUser,
+  authorizeRoles(TEACH_OR_STAFF),
+  listTimetableLessonsByDate
+);
+router.get(
+  "/timetable-lessons/online-upcoming",
+  authenticateUser,
+  authorizeRoles(TEACH_OR_STAFF),
+  listOnlineTimetableLessonsUpcoming
+);
+
+router.get(
+  "/:curriculumId/teachers-for-timetable",
+  authenticateUser,
+  authorizeRoles(TEACH_OR_STAFF),
+  listTeachersForCurriculumTimetable
+);
+
 router.get("/:curriculumId/classes", authenticateUser, authorizeRoles(TEACH_OR_STAFF), listCurriculumClasses);
 router.post("/:curriculumId/classes", authenticateUser, authorizeRoles(ADMIN_PORTAL_API_ROLES), createCurriculumClass);
 router.get("/:curriculumId/classes/:classId", authenticateUser, authorizeRoles(TEACH_OR_STAFF), getCurriculumClass);
 router.put("/:curriculumId/classes/:classId", authenticateUser, authorizeRoles(ADMIN_PORTAL_API_ROLES), updateCurriculumClass);
 router.delete("/:curriculumId/classes/:classId", authenticateUser, authorizeRoles(ADMIN_PORTAL_API_ROLES), deleteCurriculumClass);
+
+router.get("/:curriculumId/classes/:classId/timetables", authenticateUser, authorizeRoles(TEACH_OR_STAFF), listCurriculumClassTimetables);
+router.post("/:curriculumId/classes/:classId/timetables", authenticateUser, authorizeRoles(ADMIN_PORTAL_API_ROLES), createCurriculumClassTimetable);
+router.get("/:curriculumId/classes/:classId/timetables/:timetableId", authenticateUser, authorizeRoles(TEACH_OR_STAFF), getCurriculumClassTimetable);
+router.put("/:curriculumId/classes/:classId/timetables/:timetableId", authenticateUser, authorizeRoles(ADMIN_PORTAL_API_ROLES), updateCurriculumClassTimetable);
+router.delete("/:curriculumId/classes/:classId/timetables/:timetableId", authenticateUser, authorizeRoles(ADMIN_PORTAL_API_ROLES), deleteCurriculumClassTimetable);
+
+router.post(
+  "/:curriculumId/classes/:classId/timetables/:timetableId/lessons",
+  authenticateUser,
+  authorizeRoles(ADMIN_PORTAL_API_ROLES),
+  createTimetableLesson
+);
+router.put(
+  "/:curriculumId/classes/:classId/timetables/:timetableId/lessons/:lessonId",
+  authenticateUser,
+  authorizeRoles(ADMIN_PORTAL_API_ROLES),
+  updateTimetableLesson
+);
+router.delete(
+  "/:curriculumId/classes/:classId/timetables/:timetableId/lessons/:lessonId",
+  authenticateUser,
+  authorizeRoles(ADMIN_PORTAL_API_ROLES),
+  deleteTimetableLesson
+);
 
 router.get("/:curriculumId/classes/:classId/levels", authenticateUser, authorizeRoles(TEACH_OR_STAFF), listCurriculumClassLevels);
 router.post("/:curriculumId/classes/:classId/levels", authenticateUser, authorizeRoles(ADMIN_PORTAL_API_ROLES), createCurriculumClassLevel);

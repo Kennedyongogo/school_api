@@ -1,5 +1,15 @@
 const bcrypt = require("bcryptjs");
-const { sequelize, User, Student, Teacher } = require("../models");
+const {
+  sequelize,
+  User,
+  Student,
+  Teacher,
+  Curriculum,
+  CurriculumClass,
+  Enrollment,
+  Section,
+  StudentParent,
+} = require("../models");
 const { normalizeEmail, normalizeUsername, duplicateUserWhere } = require("../utils/userIdentity");
 const { parsePagination } = require("../utils/pagination");
 const { convertToRelativePath } = require("../utils/filePath");
@@ -9,8 +19,83 @@ const userExclude = { exclude: ["password_hash"] };
 
 const studentListIncludes = [
   { model: User, as: "user", attributes: userExclude },
-  { model: Teacher, as: "class_teacher", required: false, include: [{ model: User, as: "user", attributes: userExclude }] },
+  {
+    model: Teacher,
+    as: "class_teacher",
+    required: false,
+    include: [{ model: User, as: "user", attributes: userExclude }],
+  },
+  { model: Curriculum, as: "curriculum", attributes: ["id", "name", "type"], required: false },
+  {
+    model: CurriculumClass,
+    as: "curriculum_class",
+    attributes: ["id", "name", "code", "curriculum_id"],
+    required: false,
+  },
 ];
+
+async function resolveHomeroomTeacherId(curriculumClassId) {
+  if (!curriculumClassId) return null;
+  const row = await Teacher.findOne({
+    where: {
+      class_teacher_curriculum_class_id: curriculumClassId,
+      is_class_teacher: true,
+    },
+    attributes: ["id"],
+  });
+  return row ? row.id : null;
+}
+
+async function resolvePlacementFromClassId(curriculumClassId, curriculumIdHint) {
+  const cc = await CurriculumClass.findByPk(curriculumClassId, {
+    attributes: ["id", "curriculum_id"],
+  });
+  if (!cc) return { error: "Curriculum class not found" };
+  if (curriculumIdHint && curriculumIdHint !== cc.curriculum_id) {
+    return { error: "Selected class does not belong to the chosen curriculum" };
+  }
+  return { curriculum_id: cc.curriculum_id, curriculum_class_id: cc.id };
+}
+
+/** Apply curriculum / class updates from body; ignores client-supplied class_teacher_id. */
+async function curriculumPlacementPatch(student, body) {
+  const rawClass = body.curriculum_class_id;
+  const currBody = body.curriculum_id;
+
+  const classProvided =
+    rawClass !== undefined && rawClass !== null && String(rawClass).trim() !== "";
+
+  if (classProvided) {
+    const hint = currBody !== undefined ? currBody : student.curriculum_id;
+    const pl = await resolvePlacementFromClassId(rawClass, hint || undefined);
+    if (pl.error) return pl;
+    const classTeacherId = await resolveHomeroomTeacherId(pl.curriculum_class_id);
+    return {
+      curriculum_id: pl.curriculum_id,
+      curriculum_class_id: pl.curriculum_class_id,
+      class_teacher_id: classTeacherId,
+    };
+  }
+
+  if (currBody !== undefined && currBody !== student.curriculum_id) {
+    const sid = student.curriculum_class_id;
+    if (!sid) {
+      return {
+        error: "Student has no curriculum class assigned; send curriculum_class_id together with the curriculum pathway change",
+      };
+    }
+    const pl = await resolvePlacementFromClassId(sid, currBody);
+    if (pl.error) return pl;
+    const classTeacherId = await resolveHomeroomTeacherId(sid);
+    return {
+      curriculum_id: pl.curriculum_id,
+      curriculum_class_id: sid,
+      class_teacher_id: classTeacherId,
+    };
+  }
+
+  return null;
+}
 
 function coerceBool(v) {
   if (typeof v === "boolean") return v;
@@ -101,7 +186,17 @@ exports.getMyStudentProfile = async (req, res) => {
   try {
     const row = await Student.findOne({
       where: { user_id: req.user.id },
-      include: [{ model: User, as: "user", attributes: userExclude }],
+      include: [
+        { model: User, as: "user", attributes: userExclude },
+        {
+          model: Teacher,
+          as: "class_teacher",
+          required: false,
+          include: [{ model: User, as: "user", attributes: userExclude }],
+        },
+        { model: Curriculum, as: "curriculum", attributes: ["id", "name", "type"], required: false },
+        { model: CurriculumClass, as: "curriculum_class", attributes: ["id", "name", "code"], required: false },
+      ],
     });
     if (!row) {
       return res.status(404).json({ success: false, message: "Student profile not found" });
@@ -155,9 +250,8 @@ exports.createStudent = async (req, res) => {
     admission_number,
     date_of_birth,
     gender,
-    current_class,
-    section,
-    roll_number,
+    curriculum_id,
+    curriculum_class_id,
     enrollment_date,
     graduation_year,
     blood_group,
@@ -165,27 +259,38 @@ exports.createStudent = async (req, res) => {
     emergency_contact_name,
     emergency_contact_phone,
     is_alumni,
-    class_teacher_id,
   } = body;
 
   let profile_picture = null;
   const picResolved = resolveStudentProfilePicture(req, null);
   if (picResolved !== undefined) profile_picture = picResolved;
 
-  if (!admission_number || !date_of_birth || !gender || !current_class) {
+  if (
+    !admission_number ||
+    !date_of_birth ||
+    !gender ||
+    curriculum_class_id === undefined ||
+    curriculum_class_id === null ||
+    String(curriculum_class_id).trim() === ""
+  ) {
     return res.status(400).json({
       success: false,
-      message: "admission_number, date_of_birth, gender, and current_class are required",
+      message: "admission_number, date_of_birth, gender, and curriculum_class_id are required",
     });
   }
+
+  const placement = await resolvePlacementFromClassId(curriculum_class_id, curriculum_id || undefined);
+  if (placement.error) {
+    return res.status(400).json({ success: false, message: placement.error });
+  }
+  const homeroomTeacherId = await resolveHomeroomTeacherId(placement.curriculum_class_id);
 
   const studentPayload = {
     admission_number,
     date_of_birth,
     gender,
-    current_class,
-    section,
-    roll_number,
+    curriculum_id: placement.curriculum_id,
+    curriculum_class_id: placement.curriculum_class_id,
     enrollment_date,
     graduation_year,
     blood_group,
@@ -193,7 +298,7 @@ exports.createStudent = async (req, res) => {
     emergency_contact_name,
     emergency_contact_phone,
     is_alumni: !!is_alumni,
-    class_teacher_id: class_teacher_id || null,
+    class_teacher_id: homeroomTeacherId,
     profile_picture,
   };
 
@@ -217,9 +322,7 @@ exports.createStudent = async (req, res) => {
         user_id: bodyUserId,
         ...studentPayload,
       });
-      const created = await Student.findByPk(student.id, {
-        include: [{ model: User, as: "user", attributes: userExclude }],
-      });
+      const created = await Student.findByPk(student.id, { include: studentListIncludes });
       return res.status(201).json({ success: true, data: created });
     } catch (error) {
       return res.status(400).json({ success: false, message: error.message });
@@ -268,9 +371,7 @@ exports.createStudent = async (req, res) => {
 
     await t.commit();
 
-    const created = await Student.findByPk(student.id, {
-      include: [{ model: User, as: "user", attributes: userExclude }],
-    });
+    const created = await Student.findByPk(student.id, { include: studentListIncludes });
     return res.status(201).json({ success: true, data: created });
   } catch (error) {
     await t.rollback();
@@ -291,9 +392,6 @@ exports.updateStudent = async (req, res) => {
       "admission_number",
       "date_of_birth",
       "gender",
-      "current_class",
-      "section",
-      "roll_number",
       "enrollment_date",
       "graduation_year",
       "blood_group",
@@ -301,12 +399,18 @@ exports.updateStudent = async (req, res) => {
       "emergency_contact_name",
       "emergency_contact_phone",
       "is_alumni",
-      "class_teacher_id",
     ];
     const patch = {};
     for (const key of studentFields) {
       if (body[key] !== undefined) patch[key] = body[key];
     }
+
+    const placement = await curriculumPlacementPatch(student, body);
+    if (placement?.error) {
+      return res.status(400).json({ success: false, message: placement.error });
+    }
+    if (placement) Object.assign(patch, placement);
+
     const pic = resolveStudentProfilePicture(req, student);
     if (pic !== undefined) patch.profile_picture = pic;
 
@@ -327,25 +431,66 @@ exports.updateStudent = async (req, res) => {
       }
     }
 
-    const updated = await Student.findByPk(student.id, {
-      include: [{ model: User, as: "user", attributes: userExclude }],
-    });
+    const updated = await Student.findByPk(student.id, { include: studentListIncludes });
     return res.json({ success: true, data: updated });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
 
+/** Default: remove `students` row only (user account kept), like `deleteTeacher` with `keepUser`. Pass `delete_user_account=true` to also remove the user. */
 exports.deleteStudent = async (req, res) => {
+  const deleteUserAccount =
+    req.query.delete_user_account === "true" ||
+    req.query.delete_user_account === "1" ||
+    req.body?.delete_user_account === true ||
+    req.query.keep_user === "false" ||
+    req.query.keep_user === "0";
+
+  const keepUser = !deleteUserAccount;
+
+  const t = await sequelize.transaction();
   try {
-    const student = await Student.findByPk(req.params.id);
+    const student = await Student.findByPk(req.params.id, { transaction: t });
     if (!student) {
+      await t.rollback();
       return res.status(404).json({ success: false, message: "Student not found" });
     }
-    if (student.profile_picture) unlinkProfilePictureIfExists(student.profile_picture);
-    await User.destroy({ where: { id: student.user_id } });
-    return res.json({ success: true, message: "Student deleted" });
+    const userId = student.user_id;
+    const picPath = student.profile_picture;
+
+    const enrollments = await Enrollment.findAll({ where: { student_id: student.id }, transaction: t });
+    for (const en of enrollments) {
+      const section = await Section.findByPk(en.section_id, { transaction: t });
+      await en.destroy({ transaction: t });
+      if (section && en.is_active) await section.decrement("current_enrollment", { transaction: t });
+    }
+
+    await StudentParent.destroy({ where: { student_id: student.id }, transaction: t });
+
+    await student.destroy({ transaction: t });
+
+    if (!keepUser) {
+      await User.destroy({ where: { id: userId }, transaction: t });
+    }
+
+    await t.commit();
+
+    if (picPath) unlinkProfilePictureIfExists(picPath);
+
+    return res.json({
+      success: true,
+      message: keepUser
+        ? "Student profile removed; user account kept (you can link a new profile later)."
+        : "Student profile and user account deleted.",
+    });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    await t.rollback();
+    return res.status(500).json({
+      success: false,
+      message:
+        error.message ||
+        "Could not delete student profile (there may still be linked academic or billing records).",
+    });
   }
 };
