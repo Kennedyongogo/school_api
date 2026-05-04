@@ -20,6 +20,11 @@ const {
   createTimetableLesson,
   updateTimetableLesson,
   deleteTimetableLesson,
+  getTimetableLessonLiveSession,
+  initiateTimetableLessonLiveSession,
+  notifyOnlineLessonClass,
+  getTimetableLessonLiveTracking,
+  createTimetableLessonLiveRecording,
 } = require("../controllers/curriculumClassTimetableController");
 const {
   listAllCurriculumClasses,
@@ -83,6 +88,36 @@ router.get(
   authenticateUser,
   authorizeRoles(TEACH_OR_STAFF),
   listOnlineTimetableLessonsUpcoming
+);
+router.get(
+  "/timetable-lessons/:lessonId/live-session",
+  authenticateUser,
+  authorizeRoles(TEACH_OR_STAFF),
+  getTimetableLessonLiveSession
+);
+router.post(
+  "/timetable-lessons/:lessonId/live-session/initiate",
+  authenticateUser,
+  authorizeRoles(TEACH_OR_STAFF),
+  initiateTimetableLessonLiveSession
+);
+router.post(
+  "/timetable-lessons/:lessonId/notify-class",
+  authenticateUser,
+  authorizeRoles(TEACH_OR_STAFF),
+  notifyOnlineLessonClass
+);
+router.get(
+  "/timetable-lessons/:lessonId/live-tracking",
+  authenticateUser,
+  authorizeRoles(TEACH_OR_STAFF),
+  getTimetableLessonLiveTracking
+);
+router.post(
+  "/timetable-lessons/:lessonId/live-recording",
+  authenticateUser,
+  authorizeRoles(TEACH_OR_STAFF),
+  createTimetableLessonLiveRecording
 );
 
 router.get(

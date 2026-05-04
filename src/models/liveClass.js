@@ -10,11 +10,25 @@ module.exports = (sequelize) => {
         allowNull: true,
         references: { model: "class_sessions", key: "id" },
       },
-      meeting_id: { type: DataTypes.STRING(120), allowNull: false },
-      platform: {
-        type: DataTypes.ENUM("zoom", "google_meet", "teams", "other"),
+      curriculum_class_timetable_lesson_id: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        references: { model: "curriculum_class_timetable_lessons", key: "id" },
+        onDelete: "SET NULL",
+      },
+      meeting_id: { type: DataTypes.STRING(120), allowNull: true },
+      join_url: { type: DataTypes.STRING(500), allowNull: true },
+      host_url: { type: DataTypes.STRING(500), allowNull: true },
+      session_status: {
+        type: DataTypes.STRING(20),
         allowNull: false,
-        defaultValue: "zoom",
+        defaultValue: "scheduled",
+        validate: { isIn: [["scheduled", "live", "ended", "cancelled"]] },
+      },
+      platform: {
+        type: DataTypes.ENUM("zoom", "google_meet", "teams", "jitsi", "other"),
+        allowNull: false,
+        defaultValue: "other",
       },
       teacher_id: {
         type: DataTypes.UUID,

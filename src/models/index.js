@@ -257,7 +257,7 @@ const initializeModels = async () => {
     console.log("🔄 Creating/updating school system tables...");
     await User.sync({ force: false, alter: false });
     await Teacher.sync({ force: false, alter: false });
-    await Student.sync({ force: false, alter: true });
+    await Student.sync({ force: false, alter: false });
     await Parent.sync({ force: false, alter: false });
     await StudentParent.sync({ force: false, alter: false });
     await SchoolAdmin.sync({ force: false, alter: false });
@@ -304,7 +304,7 @@ const initializeModels = async () => {
     await TeacherCurriculumSubject.sync({ force: false, alter: false });
     await TeacherTeachingCurriculumClass.sync({ force: false, alter: false });
     await CurriculumClassTimetable.sync({ force: false, alter: false });
-    await CurriculumClassTimetableLesson.sync({ force: false, alter: true });
+    await CurriculumClassTimetableLesson.sync({ force: false, alter: false });
     await Program.sync({ force: false, alter: false });
     await News.sync({ force: false, alter: false });
     await SchoolEvent.sync({ force: false, alter: false });
@@ -896,6 +896,15 @@ const setupAssociations = () => {
     CurriculumSubject.hasMany(CurriculumClassTimetableLesson, {
       foreignKey: "curriculum_subject_id",
       as: "timetable_lessons",
+    });
+
+    CurriculumClassTimetableLesson.hasMany(LiveClass, {
+      foreignKey: "curriculum_class_timetable_lesson_id",
+      as: "live_sessions",
+    });
+    LiveClass.belongsTo(CurriculumClassTimetableLesson, {
+      foreignKey: "curriculum_class_timetable_lesson_id",
+      as: "timetable_lesson",
     });
 
     CurriculumSubject.hasMany(CurriculumSubjectTopic, {

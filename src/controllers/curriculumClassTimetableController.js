@@ -1,4 +1,5 @@
 const { Op } = require("sequelize");
+const crypto = require("crypto");
 const {
   Curriculum,
   CurriculumClass,
@@ -10,7 +11,14 @@ const {
   Teacher,
   User,
   TeacherCurriculumSubject,
+  LiveClass,
+  LiveClassAttendance,
+  LiveClassRecording,
+  Student,
+  InAppNotification,
 } = require("../models");
+const { STAFF_ROLES } = require("../constants/userRoles");
+const meetingProvider = require("../services/meetingProvider");
 
 const userSafe = { attributes: { exclude: ["password_hash"] } };
 
@@ -208,6 +216,142 @@ const dayViewLessonInclude = [
   },
 ];
 
+const liveSessionsLatestInclude = {
+  model: LiveClass,
+  as: "live_sessions",
+  separate: true,
+  limit: 1,
+  order: [["created_at", "DESC"]],
+  required: false,
+  attributes: ["id", "join_url", "host_url", "session_status", "platform", "meeting_id", "created_at"],
+};
+
+const onlineUpcomingLessonInclude = [...dayViewLessonInclude, liveSessionsLatestInclude];
+
+async function teacherProfileFromReq(req) {
+  return Teacher.findOne({ where: { user_id: req.user.id } });
+}
+
+async function assertCanInitiateOnlineLive(req, lesson) {
+  if (!lesson) {
+    const err = new Error("Timetable lesson not found");
+    err.statusCode = 404;
+    throw err;
+  }
+  if (lesson.delivery_mode !== "online") {
+    const err = new Error("This lesson is not scheduled as online delivery");
+    err.statusCode = 400;
+    throw err;
+  }
+  if (STAFF_ROLES.includes(req.user.role)) return;
+  const tp = await teacherProfileFromReq(req);
+  if (!tp) {
+    const err = new Error("Teacher profile required");
+    err.statusCode = 403;
+    throw err;
+  }
+  if (!lesson.teacher_id) {
+    const err = new Error("Assign a teacher to this lesson first, or ask an administrator to start the session.");
+    err.statusCode = 403;
+    throw err;
+  }
+  if (lesson.teacher_id !== tp.id) {
+    const err = new Error("You can only start a live session for your own lessons");
+    err.statusCode = 403;
+    throw err;
+  }
+}
+
+function lessonWindowDates(lesson) {
+  const d = lesson.lesson_date;
+  const s = lesson.starts_at;
+  const e = lesson.ends_at;
+  if (!d || s == null || e == null || s === "" || e === "") return null;
+  const start_time = new Date(`${String(d).trim()}T${String(s).trim().slice(0, 8)}`);
+  const end_time = new Date(`${String(d).trim()}T${String(e).trim().slice(0, 8)}`);
+  if (Number.isNaN(start_time.getTime()) || Number.isNaN(end_time.getTime())) return null;
+  if (end_time <= start_time) {
+    return { start_time, end_time: new Date(start_time.getTime() + 3600000) };
+  }
+  return { start_time, end_time };
+}
+
+function normalizeMeetingPlatform(raw) {
+  const s = raw == null ? "" : String(raw).trim().toLowerCase().replace(/-/g, "_");
+  if (s === "zoom") return "zoom";
+  if (s === "google_meet" || s === "googlemeet" || s === "meet") return "google_meet";
+  if (s === "teams" || s === "microsoft_teams") return "teams";
+  if (s === "jitsi") return "jitsi";
+  return "other";
+}
+
+async function tryProvisionMeetingForLesson(lesson) {
+  if (process.env.JITSI_DISABLED === "1") {
+    return null;
+  }
+  try {
+    const classId = lesson.timetable?.curriculum_class?.id || "class";
+    const teacherKey = lesson.teacher_id || "unassigned";
+    const title = lesson.curriculum_subject?.name || "Lesson";
+    const m = await meetingProvider.createMeeting({
+      lessonId: lesson.id,
+      classId,
+      teacherId: teacherKey,
+      title,
+    });
+    return {
+      meeting_id: m.meeting_id,
+      join_url: m.join_url,
+      host_url: m.host_url,
+      platform: m.platform,
+    };
+  } catch (e) {
+    console.error("[Meeting] Jitsi provisioning failed:", e.message);
+    return null;
+  }
+}
+
+function resolveMeetingUrls(body, provisionPayload) {
+  if (provisionPayload?.join_url && provisionPayload?.host_url) {
+    return {
+      join_url: provisionPayload.join_url,
+      host_url: provisionPayload.host_url,
+      meeting_id: provisionPayload.meeting_id || null,
+      platform: normalizeMeetingPlatform(provisionPayload.platform),
+    };
+  }
+
+  const join =
+    (body?.join_url != null && String(body.join_url).trim()) ||
+    (process.env.ONLINE_MEETING_DEFAULT_JOIN_URL && String(process.env.ONLINE_MEETING_DEFAULT_JOIN_URL).trim()) ||
+    "";
+  const host =
+    (body?.host_url != null && String(body.host_url).trim()) ||
+    (process.env.ONLINE_MEETING_DEFAULT_HOST_URL && String(process.env.ONLINE_MEETING_DEFAULT_HOST_URL).trim()) ||
+    join;
+  const platform = normalizeMeetingPlatform(process.env.ONLINE_MEETING_PLATFORM);
+  return { join_url: join, host_url: host || join, meeting_id: null, platform };
+}
+
+async function resolveLiveHostTeacherId(req, lesson, body) {
+  if (lesson.teacher_id) return { teacherId: lesson.teacher_id };
+  if (!STAFF_ROLES.includes(req.user.role)) {
+    return {
+      error: "Assign a teacher to this lesson before starting a live session.",
+    };
+  }
+  const hid = body?.host_teacher_id != null ? String(body.host_teacher_id).trim() : "";
+  if (!hid) {
+    return {
+      error:
+        "This lesson has no assigned teacher. Provide host_teacher_id (staff only), or assign a teacher on the timetable.",
+    };
+  }
+  const t = await Teacher.findByPk(hid, { attributes: ["id"] });
+  if (!t) return { error: "Invalid host_teacher_id" };
+  return { teacherId: hid };
+}
+
 exports.listTimetableLessonsByDate = async (req, res) => {
   try {
     const raw = req.query.date;
@@ -227,7 +371,7 @@ exports.listTimetableLessonsByDate = async (req, res) => {
 
     const rows = await CurriculumClassTimetableLesson.findAll({
       where: { lesson_date: date },
-      include: dayViewLessonInclude,
+      include: [...dayViewLessonInclude, liveSessionsLatestInclude],
       order: [["starts_at", "ASC"], ["created_at", "ASC"]],
       limit,
       offset,
@@ -266,7 +410,7 @@ exports.listOnlineTimetableLessonsUpcoming = async (req, res) => {
         delivery_mode: "online",
         lesson_date: { [Op.between]: [from, toIso] },
       },
-      include: dayViewLessonInclude,
+      include: onlineUpcomingLessonInclude,
       order: [
         ["lesson_date", "ASC"],
         ["starts_at", "ASC"],
@@ -705,6 +849,313 @@ exports.updateTimetableLesson = async (req, res) => {
     return res.json({ success: true, data: updated });
   } catch (error) {
     return res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+exports.getTimetableLessonLiveSession = async (req, res) => {
+  try {
+    const { lessonId } = req.params;
+    const lesson = await CurriculumClassTimetableLesson.findByPk(lessonId, {
+      include: [...dayViewLessonInclude, liveSessionsLatestInclude],
+    });
+    await assertCanInitiateOnlineLive(req, lesson);
+    const latest = lesson.live_sessions?.[0] ?? null;
+    return res.json({
+      success: true,
+      data: {
+        lesson,
+        live_class: latest,
+      },
+    });
+  } catch (error) {
+    const code = error.statusCode || 500;
+    return res.status(code).json({ success: false, message: error.message });
+  }
+};
+
+exports.initiateTimetableLessonLiveSession = async (req, res) => {
+  try {
+    const { lessonId } = req.params;
+    const body = req.body && typeof req.body === "object" ? req.body : {};
+    const forceNew = !!(body.force_new || req.query.force_new === "1");
+
+    const lesson = await CurriculumClassTimetableLesson.findByPk(lessonId, {
+      include: dayViewLessonInclude,
+    });
+    await assertCanInitiateOnlineLive(req, lesson);
+
+    const hostResolved = await resolveLiveHostTeacherId(req, lesson, body);
+    if (hostResolved.error) {
+      return res.status(400).json({ success: false, message: hostResolved.error });
+    }
+    const { teacherId } = hostResolved;
+
+    if (!forceNew) {
+      const reusable = await LiveClass.findOne({
+        where: {
+          curriculum_class_timetable_lesson_id: lesson.id,
+          session_status: { [Op.in]: ["scheduled", "live"] },
+          join_url: { [Op.ne]: null },
+        },
+        order: [["created_at", "DESC"]],
+      });
+      if (reusable && String(reusable.join_url).trim() !== "") {
+        return res.json({
+          success: true,
+          data: {
+            live_class: reusable,
+            lesson,
+            reused: true,
+          },
+        });
+      }
+    }
+
+    const provisionPayload = await tryProvisionMeetingForLesson(lesson);
+    const urls = resolveMeetingUrls(body, provisionPayload);
+    if (!urls.join_url || String(urls.join_url).trim() === "") {
+      return res.status(400).json({
+        success: false,
+        message:
+          "No meeting join URL available. Jitsi is used by default (remove JITSI_DISABLED if you disabled it). Otherwise set ONLINE_MEETING_DEFAULT_JOIN_URL (and optionally ONLINE_MEETING_DEFAULT_HOST_URL), or send join_url (and optionally host_url) in the request body.",
+      });
+    }
+
+    const window = lessonWindowDates(lesson) || {
+      start_time: new Date(),
+      end_time: new Date(Date.now() + 3600000),
+    };
+
+    const meetingRef =
+      urls.meeting_id && String(urls.meeting_id).trim() !== ""
+        ? String(urls.meeting_id).trim()
+        : `tt-lesson-${lesson.id}-${crypto.randomUUID()}`;
+
+    const row = await LiveClass.create({
+      class_session_id: null,
+      curriculum_class_timetable_lesson_id: lesson.id,
+      meeting_id: meetingRef,
+      platform: urls.platform || "other",
+      teacher_id: teacherId,
+      start_time: window.start_time,
+      end_time: window.end_time,
+      join_url: urls.join_url,
+      host_url: urls.host_url || urls.join_url,
+      session_status: "scheduled",
+      attendance_count: 0,
+    });
+
+    const live_class = await LiveClass.findByPk(row.id);
+    return res.status(201).json({
+      success: true,
+      data: {
+        live_class,
+        lesson,
+        reused: false,
+      },
+    });
+  } catch (error) {
+    const code = error.statusCode || 500;
+    return res.status(code).json({ success: false, message: error.message });
+  }
+};
+
+/** System in-app notifications (public portal bell) for students in this lesson's curriculum class — no email. */
+exports.notifyOnlineLessonClass = async (req, res) => {
+  try {
+    const { lessonId } = req.params;
+    const body = req.body && typeof req.body === "object" ? req.body : {};
+    const noteExtra = body.note != null ? String(body.note).trim().slice(0, 2000) : "";
+
+    const lesson = await CurriculumClassTimetableLesson.findByPk(lessonId, {
+      include: [...dayViewLessonInclude],
+    });
+    await assertCanInitiateOnlineLive(req, lesson);
+
+    const timetable = lesson?.timetable;
+    const ccId = timetable?.curriculum_class_id || timetable?.curriculum_class?.id;
+    if (!ccId) {
+      return res.status(400).json({ success: false, message: "Lesson has no curriculum class on timetable." });
+    }
+
+    const live = await LiveClass.findOne({
+      where: {
+        curriculum_class_timetable_lesson_id: lesson.id,
+        session_status: { [Op.in]: ["scheduled", "live"] },
+        join_url: { [Op.ne]: null },
+      },
+      order: [["created_at", "DESC"]],
+    });
+    const joinUrl =
+      (live?.join_url && String(live.join_url).trim()) ||
+      (body.join_url != null && String(body.join_url).trim()) ||
+      "";
+    if (!joinUrl) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "No join URL yet. Prepare meeting links first (Initiate / open links), or include join_url in the request body.",
+      });
+    }
+
+    const subjectName = lesson.curriculum_subject?.name || "Online lesson";
+    const lessonDate = lesson.lesson_date ? String(lesson.lesson_date) : "";
+
+    const students = await Student.findAll({
+      where: { curriculum_class_id: ccId },
+      attributes: ["id", "user_id"],
+    });
+
+    const title = `Online class: ${subjectName}`;
+    let message = lessonDate ? `${subjectName} · ${lessonDate}\n\nJoin: ${joinUrl}` : `${subjectName}\n\nJoin: ${joinUrl}`;
+    if (noteExtra) message += `\n\n${noteExtra}`;
+
+    let inApp = 0;
+    const errors = [];
+
+    for (const st of students) {
+      try {
+        await InAppNotification.create({
+          user_id: st.user_id,
+          title,
+          message,
+          type: "info",
+          action_url: joinUrl.length > 500 ? joinUrl.slice(0, 500) : joinUrl,
+        });
+        inApp += 1;
+      } catch (e) {
+        errors.push({ student_id: st.id, step: "in_app", message: e.message });
+      }
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        students_targeted: students.length,
+        in_app_notifications_created: inApp,
+        errors: errors.length ? errors : undefined,
+      },
+    });
+  } catch (error) {
+    const code = error.statusCode || 500;
+    return res.status(code).json({ success: false, message: error.message });
+  }
+};
+
+exports.getTimetableLessonLiveTracking = async (req, res) => {
+  try {
+    const { lessonId } = req.params;
+    const lesson = await CurriculumClassTimetableLesson.findByPk(lessonId, {
+      include: [...dayViewLessonInclude],
+    });
+    await assertCanInitiateOnlineLive(req, lesson);
+
+    const live = await LiveClass.findOne({
+      where: { curriculum_class_timetable_lesson_id: lesson.id },
+      order: [["created_at", "DESC"]],
+      attributes: [
+        "id",
+        "join_url",
+        "host_url",
+        "session_status",
+        "platform",
+        "meeting_id",
+        "created_at",
+        "attendance_count",
+        "start_time",
+        "end_time",
+      ],
+      include: [
+        {
+          model: LiveClassAttendance,
+          as: "live_attendances",
+          separate: true,
+          order: [["join_time", "DESC"]],
+          include: [
+            {
+              model: Student,
+              as: "student",
+              attributes: ["id", "admission_number", "user_id"],
+              include: [{ model: User, as: "user", ...userSafe }],
+            },
+          ],
+        },
+        {
+          model: LiveClassRecording,
+          as: "recordings",
+          separate: true,
+          order: [["created_at", "DESC"]],
+        },
+      ],
+    });
+
+    return res.json({
+      success: true,
+      data: {
+        lesson: {
+          id: lesson.id,
+          lesson_date: lesson.lesson_date,
+          delivery_mode: lesson.delivery_mode,
+        },
+        live_class: live,
+      },
+    });
+  } catch (error) {
+    const code = error.statusCode || 500;
+    return res.status(code).json({ success: false, message: error.message });
+  }
+};
+
+exports.createTimetableLessonLiveRecording = async (req, res) => {
+  try {
+    const { lessonId } = req.params;
+    const body = req.body && typeof req.body === "object" ? req.body : {};
+    const recording_url =
+      body.recording_url != null && String(body.recording_url).trim() !== ""
+        ? String(body.recording_url).trim()
+        : "";
+    if (!recording_url) {
+      return res.status(400).json({ success: false, message: "recording_url is required" });
+    }
+
+    const lesson = await CurriculumClassTimetableLesson.findByPk(lessonId, {
+      include: [...dayViewLessonInclude],
+    });
+    await assertCanInitiateOnlineLive(req, lesson);
+
+    const live = await LiveClass.findOne({
+      where: { curriculum_class_timetable_lesson_id: lesson.id },
+      order: [["created_at", "DESC"]],
+    });
+    if (!live) {
+      return res.status(400).json({
+        success: false,
+        message: "No live session exists for this lesson yet. Prepare meeting links first.",
+      });
+    }
+
+    let duration_seconds = 0;
+    if (body.duration_seconds != null && body.duration_seconds !== "") {
+      const n = parseInt(body.duration_seconds, 10);
+      if (Number.isFinite(n) && n >= 0) duration_seconds = n;
+    }
+
+    const storage_path =
+      body.storage_path != null && String(body.storage_path).trim() !== ""
+        ? String(body.storage_path).trim().slice(0, 500)
+        : null;
+
+    const row = await LiveClassRecording.create({
+      live_class_id: live.id,
+      recording_url: recording_url.slice(0, 500),
+      duration_seconds,
+      storage_path: storage_path ? storage_path.slice(0, 500) : null,
+    });
+
+    return res.status(201).json({ success: true, data: row });
+  } catch (error) {
+    const code = error.statusCode || 500;
+    return res.status(code).json({ success: false, message: error.message });
   }
 };
 

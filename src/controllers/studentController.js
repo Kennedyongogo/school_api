@@ -11,7 +11,6 @@ const {
   StudentParent,
 } = require("../models");
 const { normalizeEmail, normalizeUsername, duplicateUserWhere } = require("../utils/userIdentity");
-const { parsePagination } = require("../utils/pagination");
 const { convertToRelativePath } = require("../utils/filePath");
 const { unlinkProfilePictureIfExists } = require("../utils/profilePictureStorage");
 
@@ -144,8 +143,26 @@ function resolveStudentProfilePicture(req, existingStudent) {
 
 exports.listStudents = async (req, res) => {
   try {
-    const { page, limit, offset } = parsePagination(req);
+    const classIdRaw = req.query.curriculum_class_id;
+    const hasClassFilter = classIdRaw != null && String(classIdRaw).trim() !== "";
+
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limitCap = hasClassFilter ? 500 : 100;
+    const rawLimit = parseInt(req.query.limit, 10);
+    const defaultLimit = hasClassFilter ? 500 : 10;
+    const limit = Math.min(
+      limitCap,
+      Math.max(1, Number.isFinite(rawLimit) && rawLimit > 0 ? rawLimit : defaultLimit)
+    );
+    const offset = (page - 1) * limit;
+
+    const where = {};
+    if (hasClassFilter) {
+      where.curriculum_class_id = String(classIdRaw).trim();
+    }
+
     const { count, rows } = await Student.findAndCountAll({
+      where,
       include: studentListIncludes,
       order: [["created_at", "DESC"]],
       limit,
