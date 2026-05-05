@@ -12,7 +12,18 @@ exports.listPrograms = async (req, res) => {
         ? [
             { model: Curriculum, as: "curriculum", attributes: ["id", "name", "type", "period"] },
             { model: GradeLevel, as: "grade_level", attributes: ["id", "name"] },
-            { model: FeeStructure, as: "fee_structure", attributes: ["id", "name", "amount", "category"] },
+            {
+              model: FeeStructure,
+              as: "fee_structure",
+              attributes: [
+                "id",
+                "curriculum_id",
+                "curriculum_class_id",
+                "curriculum_class_level_id",
+                "term_fee_amount",
+                "payment_breakdown",
+              ],
+            },
           ]
         : [];
 

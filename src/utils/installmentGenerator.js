@@ -32,25 +32,19 @@ async function resolveGradeLevelId(studentId) {
   return en?.section?.grade_level_id ?? null;
 }
 
-async function computeTermFeesTotal(studentId, academicYearId, gradeLevelId) {
-  const glCond =
-    gradeLevelId != null
-      ? {
-          [Op.or]: [{ grade_level_id: gradeLevelId }, { grade_level_id: null }],
-        }
-      : { grade_level_id: null };
+async function computeTermFeesTotal(studentId) {
+  const st = await Student.findByPk(studentId, { attributes: ["id", "curriculum_class_id"] });
+  if (!st?.curriculum_class_id) return 0;
 
   const fees = await FeeStructure.findAll({
     where: {
-      academic_year_id: academicYearId,
-      is_active: true,
-      ...glCond,
+      curriculum_class_id: st.curriculum_class_id,
     },
   });
 
   let sum = 0;
   for (const fee of fees) {
-    if (fee.is_per_term) sum += Number(fee.amount);
+    sum += Number(fee.term_fee_amount || 0);
   }
   return roundMoney(sum);
 }
@@ -113,7 +107,7 @@ async function generateInstallmentsForStudent(opts) {
   let discountedTotal =
     totalTermFeesOverride != null && totalTermFeesOverride !== ""
       ? roundMoney(Number(totalTermFeesOverride))
-      : await computeTermFeesTotal(studentId, academicYearId, gradeLevelId);
+      : await computeTermFeesTotal(studentId);
 
   discountedTotal = await applyDiscounts(discountedTotal, studentId, academicYearId, termId);
 

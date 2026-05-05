@@ -55,6 +55,7 @@ exports.updateExamQuestion = async (req, res) => {
       "marks",
       "order_number",
       "explanation",
+      "required",
     ];
     const patch = {};
     for (const k of allowed) {

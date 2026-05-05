@@ -17,31 +17,24 @@ module.exports = (sequelize) => {
         type: DataTypes.TEXT,
         allowNull: true,
       },
-      subject_id: {
+      template_id: {
         type: DataTypes.UUID,
-        allowNull: false,
-        references: { model: "subjects", key: "id" },
-      },
-      class_assignment_id: {
-        type: DataTypes.UUID,
-        allowNull: false,
-        references: { model: "class_assignments", key: "id" },
+        allowNull: true,
+        references: { model: "exam_templates", key: "id" },
       },
       total_marks: {
         type: DataTypes.INTEGER,
-        allowNull: false,
+        allowNull: true,
+        defaultValue: 0,
       },
       passing_marks: {
         type: DataTypes.INTEGER,
-        allowNull: false,
+        allowNull: true,
+        defaultValue: 0,
       },
       duration_minutes: {
         type: DataTypes.INTEGER,
         allowNull: false,
-      },
-      question_type: {
-        type: DataTypes.ENUM("multiple_choice", "true_false", "essay", "mixed"),
-        defaultValue: "multiple_choice",
       },
       requires_webcam: {
         type: DataTypes.BOOLEAN,
@@ -63,6 +56,11 @@ module.exports = (sequelize) => {
         type: DataTypes.TEXT,
         allowNull: true,
       },
+      exam_layout_json: {
+        type: DataTypes.JSONB,
+        allowNull: false,
+        defaultValue: {},
+      },
       status: {
         type: DataTypes.ENUM("draft", "published", "archived"),
         defaultValue: "draft",
@@ -77,7 +75,7 @@ module.exports = (sequelize) => {
       tableName: "exams",
       timestamps: true,
       underscored: true,
-    }
+    },
   );
 
   return Exam;
