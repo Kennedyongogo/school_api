@@ -11,6 +11,10 @@ const {
   recordLiveSessionJoin,
   recordLiveSessionLeave,
 } = require("../controllers/schoolPortalLiveSessionController");
+const {
+  listMyStudentTimetableLessons,
+  listMyStudentExamSchedules,
+} = require("../controllers/schoolPortalTimetableController");
 const { authorizeRoles } = require("../middleware/auth");
 
 router.get("/notifications", authenticateUser, listSchoolPortalNotifications);
@@ -19,6 +23,8 @@ router.post("/notifications/mark-all-read", authenticateUser, markAllSchoolPorta
 
 router.post("/live-session/join", authenticateUser, authorizeRoles(["student"]), recordLiveSessionJoin);
 router.post("/live-session/leave", authenticateUser, authorizeRoles(["student"]), recordLiveSessionLeave);
+router.get("/student/timetable-lessons", authenticateUser, authorizeRoles(["student"]), listMyStudentTimetableLessons);
+router.get("/student/exam-schedules", authenticateUser, authorizeRoles(["student"]), listMyStudentExamSchedules);
 
 router.use(errorHandler);
 

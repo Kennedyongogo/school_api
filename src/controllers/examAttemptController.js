@@ -1,4 +1,14 @@
-const { ExamAttempt, Exam, Student, User, ExamSchedule, Section, GradeLevel } = require("../models");
+const {
+  ExamAttempt,
+  Exam,
+  Student,
+  User,
+  ExamSchedule,
+  Curriculum,
+  CurriculumClass,
+  CurriculumClassLevel,
+  Teacher,
+} = require("../models");
 
 const userSafe = { attributes: { exclude: ["password_hash"] } };
 
@@ -21,7 +31,27 @@ const attemptIncludes = [
     model: ExamSchedule,
     as: "exam_schedule",
     required: false,
-    include: [{ model: Section, as: "section", include: [{ model: GradeLevel, as: "grade_level" }] }],
+    include: [
+      { model: Curriculum, as: "curriculum", required: false, attributes: ["id", "name", "type"] },
+      {
+        model: CurriculumClass,
+        as: "curriculum_class",
+        required: false,
+        attributes: ["id", "name", "code", "curriculum_id"],
+      },
+      {
+        model: CurriculumClassLevel,
+        as: "curriculum_class_level",
+        required: false,
+        attributes: ["id", "name", "level_order"],
+      },
+      {
+        model: Teacher,
+        as: "teacher",
+        required: false,
+        include: [{ model: User, as: "user", ...userSafe }],
+      },
+    ],
   },
 ];
 

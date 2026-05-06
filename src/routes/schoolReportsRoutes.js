@@ -5,6 +5,7 @@ const {
   getClassAttendanceReport,
   getSyllabusProgressReport,
   getDailySummary,
+  getHrAttendanceOverview,
 } = require("../controllers/schoolReportsController");
 const { authenticateUser, authorizeRoles } = require("../middleware/auth");
 const { errorHandler } = require("../middleware/errorHandler");
@@ -15,6 +16,7 @@ router.get("/teacher-attendance", authenticateUser, authorizeRoles(ADMIN_PORTAL_
 router.get("/class-attendance", authenticateUser, authorizeRoles(ADMIN_PORTAL_API_ROLES), getClassAttendanceReport);
 router.get("/syllabus-progress", authenticateUser, authorizeRoles(ADMIN_PORTAL_API_ROLES), getSyllabusProgressReport);
 router.get("/daily-summary", authenticateUser, authorizeRoles(ADMIN_PORTAL_API_ROLES), getDailySummary);
+router.get("/hr-attendance-overview", authenticateUser, authorizeRoles(ADMIN_PORTAL_API_ROLES), getHrAttendanceOverview);
 
 router.use(errorHandler);
 

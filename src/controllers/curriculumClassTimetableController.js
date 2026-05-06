@@ -900,6 +900,10 @@ exports.initiateTimetableLessonLiveSession = async (req, res) => {
         order: [["created_at", "DESC"]],
       });
       if (reusable && String(reusable.join_url).trim() !== "") {
+        // Teacher has actively opened/initiated this online lesson session.
+        if (!lesson.teacher_attended) {
+          await lesson.update({ teacher_attended: true });
+        }
         return res.json({
           success: true,
           data: {
@@ -944,6 +948,11 @@ exports.initiateTimetableLessonLiveSession = async (req, res) => {
       session_status: "scheduled",
       attendance_count: 0,
     });
+
+    // Auto-mark teacher attendance once the teacher successfully initiates the lesson session.
+    if (!lesson.teacher_attended) {
+      await lesson.update({ teacher_attended: true });
+    }
 
     const live_class = await LiveClass.findByPk(row.id);
     return res.status(201).json({

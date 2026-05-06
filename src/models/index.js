@@ -300,10 +300,11 @@ const initializeModels = async () => {
     await AcademicTerm.sync({ force: false, alter: false });
     await SchoolProfile.sync({ force: false, alter: false });
     await ExamTemplate.sync({ force: false, alter: false });
-    await Exam.sync({ force: true, alter: true });
-    await ExamQuestion.sync({ force: true, alter: true });
-    await ExamSubmission.sync({ force: true, alter: false });
-    await ExamAnswer.sync({ force: true, alter: false });
+    await Exam.sync({ force: false, alter: false });
+    await ExamSchedule.sync({ force: false, alter: true });
+    await ExamQuestion.sync({ force: false, alter: false });
+    await ExamSubmission.sync({ force: false, alter: false });
+    await ExamAnswer.sync({ force: false, alter: false });
     await InstallmentPlan.sync({ force: false, alter: false });
     await StudentInstallmentPlan.sync({ force: false, alter: false });
     await Installment.sync({ force: false, alter: false });
@@ -555,23 +556,20 @@ const setupAssociations = () => {
 
     Exam.hasMany(ExamSchedule, { foreignKey: "exam_id", as: "schedules" });
     ExamSchedule.belongsTo(Exam, { foreignKey: "exam_id", as: "exam" });
-
-    Section.hasMany(ExamSchedule, {
-      foreignKey: "section_id",
-      as: "exam_schedules",
-    });
-    ExamSchedule.belongsTo(Section, {
-      foreignKey: "section_id",
-      as: "section",
-    });
+    Curriculum.hasMany(ExamSchedule, { foreignKey: "curriculum_id", as: "exam_schedules" });
+    ExamSchedule.belongsTo(Curriculum, { foreignKey: "curriculum_id", as: "curriculum" });
+    CurriculumClass.hasMany(ExamSchedule, { foreignKey: "curriculum_class_id", as: "exam_schedules" });
+    ExamSchedule.belongsTo(CurriculumClass, { foreignKey: "curriculum_class_id", as: "curriculum_class" });
+    CurriculumClassLevel.hasMany(ExamSchedule, { foreignKey: "curriculum_class_level_id", as: "exam_schedules" });
+    ExamSchedule.belongsTo(CurriculumClassLevel, { foreignKey: "curriculum_class_level_id", as: "curriculum_class_level" });
 
     Teacher.hasMany(ExamSchedule, {
-      foreignKey: "invigilator_id",
-      as: "invigilation_schedules",
+      foreignKey: "teacher_id",
+      as: "exam_schedules",
     });
     ExamSchedule.belongsTo(Teacher, {
-      foreignKey: "invigilator_id",
-      as: "Invigilator",
+      foreignKey: "teacher_id",
+      as: "teacher",
     });
 
     Exam.hasMany(ExamQuestion, { foreignKey: "exam_id", as: "questions" });
