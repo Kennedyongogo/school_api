@@ -1,5 +1,5 @@
 const { Op } = require("sequelize");
-const { Exam, ExamSubmission, StudentExamResult, CurriculumSubject, SubjectGradingScale, Student } = require("../models");
+const { Exam, ExamSubmission, ExamAttempt, ExamAnswer, StudentExamResult, CurriculumSubject, SubjectGradingScale, Student } = require("../models");
 
 async function resolveSubjectBand({ curriculum_id, curriculum_class_id, curriculum_subject_id, marks }) {
   return SubjectGradingScale.findOne({
@@ -49,14 +49,14 @@ exports.bulkUpsertExamResults = async (req, res) => {
         student_id,
         exam_id: exam.id,
         curriculum_subject_id,
-        subject_id: cs.subject_id || null,
         marks_obtained: marks,
         marks,
-        grade: band?.grade || null,
+        grade: band ? `${band.grade} (${band.remarks}) - ${band.points} points` : null,
         grade_letter: band?.grade || null,
         grade_remarks: band?.remarks || null,
         graded_at: new Date(),
         graded_by: req.user?.id || null,
+        points: band?.points || null,
       };
       const existing = await StudentExamResult.findOne({
         where: { student_id, exam_id: exam.id, curriculum_subject_id },
@@ -88,8 +88,15 @@ exports.gradeExamSubmission = async (req, res) => {
     const attempt = await ExamAttempt.findOne({
       where: { exam_id: exam.id, student_id: submission.student_id },
     });
-    if (!attempt || attempt.total_score == null) {
-      return res.status(400).json({ success: false, message: "Exam must be marked first." });
+
+    let totalScore = attempt.total_score;
+    if (totalScore == null) {
+      // Calculate from answers
+      const answers = await ExamAnswer.findAll({
+        where: { submission_id: submission.id },
+        attributes: ['marks_obtained'],
+      });
+      totalScore = answers.reduce((sum, a) => sum + Number(a.marks_obtained || 0), 0);
     }
     const curriculum_subject_id = exam.curriculum_subject_id;
     if (!curriculum_subject_id) {
@@ -110,21 +117,21 @@ exports.gradeExamSubmission = async (req, res) => {
       curriculum_id,
       curriculum_class_id,
       curriculum_subject_id,
-      marks: attempt.total_score,
+      marks: Number(totalScore),
     });
 
     const payload = {
       student_id: submission.student_id,
       exam_id: exam.id,
       curriculum_subject_id,
-      subject_id: cs.subject_id || null,
-      marks_obtained: attempt.total_score,
-      marks: attempt.total_score,
-      grade: band?.grade || null,
+      marks_obtained: Number(totalScore),
+      marks: Number(totalScore),
+      grade: band ? `${band.grade} (${band.remarks}) - ${band.points} points` : null,
       grade_letter: band?.grade || null,
       grade_remarks: band?.remarks || null,
       graded_at: new Date(),
       graded_by: req.user?.id || null,
+      points: band?.points || null,
     };
     const existing = await StudentExamResult.findOne({
       where: { student_id: submission.student_id, exam_id: exam.id, curriculum_subject_id },
@@ -165,14 +172,14 @@ exports.updateExamResultMarks = async (req, res) => {
     });
     await row.update({
       curriculum_subject_id: cs.id,
-      subject_id: cs.subject_id || row.subject_id || null,
       marks_obtained: marks,
       marks,
-      grade: band?.grade || null,
+      grade: band ? `${band.grade} (${band.remarks}) - ${band.points} points` : null,
       grade_letter: band?.grade || null,
       grade_remarks: band?.remarks || null,
       graded_at: new Date(),
       graded_by: req.user?.id || null,
+      points: band?.points || null,
     });
     return res.json({ success: true, data: row });
   } catch (error) {

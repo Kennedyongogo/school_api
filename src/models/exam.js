@@ -32,10 +32,15 @@ module.exports = (sequelize) => {
         allowNull: true,
         references: { model: "curriculum_classes", key: "id" },
       },
-      semester_id: {
+      curriculum_subject_id: {
         type: DataTypes.UUID,
         allowNull: true,
-        references: { model: "semesters", key: "id" },
+        references: { model: "curriculum_subjects", key: "id" },
+      },
+      curriculum_class_level_id: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        references: { model: "curriculum_class_levels", key: "id" },
       },
       exam_type: {
         type: DataTypes.STRING(50),

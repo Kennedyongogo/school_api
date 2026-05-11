@@ -569,8 +569,8 @@ const setupAssociations = () => {
     Exam.belongsTo(Curriculum, { foreignKey: "curriculum_id", as: "curriculum" });
     CurriculumClass.hasMany(Exam, { foreignKey: "curriculum_class_id", as: "exams" });
     Exam.belongsTo(CurriculumClass, { foreignKey: "curriculum_class_id", as: "curriculum_class" });
-    Semester.hasMany(Exam, { foreignKey: "semester_id", as: "exams" });
-    Exam.belongsTo(Semester, { foreignKey: "semester_id", as: "semester" });
+    CurriculumClassLevel.hasMany(Exam, { foreignKey: "curriculum_class_level_id", as: "exams" });
+    Exam.belongsTo(CurriculumClassLevel, { foreignKey: "curriculum_class_level_id", as: "curriculum_class_level" });
 
     Exam.hasMany(ExamSchedule, { foreignKey: "exam_id", as: "schedules" });
     ExamSchedule.belongsTo(Exam, { foreignKey: "exam_id", as: "exam" });
@@ -795,14 +795,7 @@ const setupAssociations = () => {
       as: "student",
     });
 
-    Subject.hasMany(StudentExamResult, {
-      foreignKey: "subject_id",
-      as: "student_exam_results",
-    });
-    StudentExamResult.belongsTo(Subject, {
-      foreignKey: "subject_id",
-      as: "subject",
-    });
+
     CurriculumSubject.hasMany(StudentExamResult, {
       foreignKey: "curriculum_subject_id",
       as: "student_exam_results",
@@ -820,32 +813,9 @@ const setupAssociations = () => {
       as: "exam",
     });
 
-    ExamAttempt.hasMany(StudentExamResult, {
-      foreignKey: "exam_attempt_id",
-      as: "grading_records",
-    });
-    StudentExamResult.belongsTo(ExamAttempt, {
-      foreignKey: "exam_attempt_id",
-      as: "exam_attempt",
-    });
 
-    AssessmentExamType.hasMany(StudentExamResult, {
-      foreignKey: "exam_type_id",
-      as: "student_results",
-    });
-    StudentExamResult.belongsTo(AssessmentExamType, {
-      foreignKey: "exam_type_id",
-      as: "assessment_exam_type",
-    });
 
-    Semester.hasMany(StudentExamResult, {
-      foreignKey: "semester_id",
-      as: "student_exam_results",
-    });
-    StudentExamResult.belongsTo(Semester, {
-      foreignKey: "semester_id",
-      as: "semester",
-    });
+
 
     Student.hasMany(SubjectAverage, {
       foreignKey: "student_id",

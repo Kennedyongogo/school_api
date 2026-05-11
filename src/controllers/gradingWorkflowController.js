@@ -1,33 +1,8 @@
 const { SubjectAverage, OverallAverage, ReportCard, Student } = require("../models");
-const {
-  recalculateSubjectAverage,
-  recalculateOverallAverage,
-  recalculateClassPositions,
-  recalculateGradePositions,
-  recalculateSubjectRanksForSection,
-  recalculateSubjectRanksForGradeLevel,
-  generateReportCard,
-} = require("../utils/gradingCalculator");
+// Grading calculator removed as per user request
 
 exports.postRecalculateSubjectAverage = async (req, res) => {
-  try {
-    const { student_id, subject_id, semester_id, grading_system_type } = req.body;
-    if (!student_id || !subject_id || !semester_id) {
-      return res.status(400).json({
-        success: false,
-        message: "student_id, subject_id, and semester_id are required",
-      });
-    }
-    const row = await recalculateSubjectAverage(
-      student_id,
-      subject_id,
-      semester_id,
-      grading_system_type || "percentage"
-    );
-    return res.json({ success: true, data: row });
-  } catch (error) {
-    return res.status(400).json({ success: false, message: error.message });
-  }
+  return res.status(501).json({ success: false, message: "Grading workflow removed" });
 };
 
 exports.postRecalculateOverallAverage = async (req, res) => {

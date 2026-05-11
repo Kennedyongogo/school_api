@@ -14,11 +14,7 @@ module.exports = (sequelize) => {
         allowNull: false,
         references: { model: "students", key: "id" },
       },
-      exam_attempt_id: {
-        type: DataTypes.UUID,
-        allowNull: true,
-        references: { model: "exam_attempts", key: "id" },
-      },
+
       exam_id: {
         type: DataTypes.UUID,
         allowNull: true,
@@ -29,21 +25,7 @@ module.exports = (sequelize) => {
         allowNull: true,
         references: { model: "curriculum_subjects", key: "id" },
       },
-      subject_id: {
-        type: DataTypes.UUID,
-        allowNull: true,
-        references: { model: "subjects", key: "id" },
-      },
-      exam_type_id: {
-        type: DataTypes.UUID,
-        allowNull: false,
-        references: { model: "exam_types", key: "id" },
-      },
-      semester_id: {
-        type: DataTypes.UUID,
-        allowNull: false,
-        references: { model: "semesters", key: "id" },
-      },
+
       marks_obtained: {
         type: DataTypes.DECIMAL(5, 2),
         allowNull: true,
@@ -53,10 +35,6 @@ module.exports = (sequelize) => {
         allowNull: true,
       },
       total_marks: {
-        type: DataTypes.DECIMAL(5, 2),
-        allowNull: true,
-      },
-      percentage: {
         type: DataTypes.DECIMAL(5, 2),
         allowNull: true,
       },
@@ -81,17 +59,9 @@ module.exports = (sequelize) => {
         allowNull: true,
         references: { model: "users", key: "id" },
       },
-      gpa_earned: {
-        type: DataTypes.DECIMAL(3, 2),
-        allowNull: true,
-      },
       points: {
         type: DataTypes.DECIMAL(6, 2),
         allowNull: true,
-      },
-      is_best_attempt: {
-        type: DataTypes.BOOLEAN,
-        defaultValue: true,
       },
     },
     {
@@ -99,7 +69,6 @@ module.exports = (sequelize) => {
       timestamps: true,
       underscored: true,
       indexes: [
-        { unique: true, fields: ["exam_attempt_id"], name: "student_exam_results_attempt_unique" },
         {
           unique: true,
           fields: ["student_id", "exam_id", "curriculum_subject_id"],

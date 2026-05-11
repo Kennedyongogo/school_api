@@ -187,8 +187,8 @@ app.use("/uploads/marketplace-listings", express.static(marketplaceListingsUploa
 app.use("/uploads/proctoring-recordings", express.static(proctoringRecordingsUploadPath));
 app.use("/uploads/posters", express.static(postersUploadPath));
 app.use("/uploads/school-logos", express.static(schoolLogosUploadPath));
-app.use("/uploads/teacher-profiles", express.static(teacherProfilesUploadPath));
-app.use("/uploads/student-profiles", express.static(studentProfilesUploadPath));
+app.use("/uploads/teacher-profiles", cors(), express.static(teacherProfilesUploadPath));
+app.use("/uploads/student-profiles", cors(), express.static(studentProfilesUploadPath));
 
 // API routes
 console.log("🔗 Registering API routes...");

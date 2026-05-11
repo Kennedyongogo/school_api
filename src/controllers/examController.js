@@ -846,6 +846,10 @@ exports.createExam = async (req, res) => {
         title,
         description: body.description || null,
         template_id: body.template_id,
+          curriculum_id: body.curriculum_id || null,
+          curriculum_class_id: body.curriculum_class_id || null,
+          curriculum_subject_id: body.curriculum_subject_id || null,
+          curriculum_class_level_id: body.curriculum_class_level_id || null,
         total_marks: Number.isFinite(Number(body.total_marks)) ? Number(body.total_marks) : 0,
         passing_marks: Number.isFinite(Number(body.passing_marks)) ? Number(body.passing_marks) : 0,
         duration_minutes: Number(body.duration_minutes),
@@ -883,6 +887,10 @@ exports.updateExam = async (req, res) => {
       "title",
       "description",
       "template_id",
+      "curriculum_id",
+      "curriculum_class_id",
+      "curriculum_subject_id",
+      "curriculum_class_level_id",
       "total_marks",
       "passing_marks",
       "duration_minutes",
@@ -904,6 +912,11 @@ exports.updateExam = async (req, res) => {
     }
     await row.update(patch);
     if (Array.isArray(req.body.questions)) {
+      // Check if there are any submissions for this exam
+      const hasSubmissions = await ExamSubmission.count({ where: { exam_id: row.id } });
+      if (hasSubmissions > 0) {
+        return res.status(400).json({ success: false, message: "Cannot update questions for an exam that has student submissions." });
+      }
       const tx = await sequelize.transaction();
       try {
         const normalizedQuestions = req.body.questions.map((q, i) => normalizeQuestion(q, i));
@@ -969,7 +982,9 @@ exports.deleteExam = async (req, res) => {
     }
 
     if (attemptIds.length) {
-      await StudentExamResult.destroy({ where: { exam_attempt_id: attemptIds }, transaction: tx });
+      const attempts = await ExamAttempt.findAll({ where: { id: attemptIds }, attributes: ['exam_id'], transaction: tx });
+      const examIds = attempts.map(a => a.exam_id);
+      await StudentExamResult.destroy({ where: { exam_id: { [Op.in]: examIds } }, transaction: tx });
       await StudentAnswer.destroy({ where: { exam_attempt_id: attemptIds }, transaction: tx });
       await TemporaryAnswer.destroy({ where: { exam_attempt_id: attemptIds }, transaction: tx });
       await ExamSessionLog.destroy({ where: { exam_attempt_id: attemptIds }, transaction: tx });
@@ -1257,7 +1272,6 @@ exports.listExamSubmissionsForMarking = async (req, res) => {
         })),
         marking: attempt
           ? {
-              exam_attempt_id: attempt.id,
               total_score: attempt.total_score,
               percentage: attempt.percentage,
               is_passed: attempt.is_passed,
@@ -1350,7 +1364,6 @@ exports.markExamSubmission = async (req, res) => {
       success: true,
       data: {
         submission_id: submission.id,
-        exam_attempt_id: attempt.id,
         total_score: attempt.total_score,
         percentage: attempt.percentage,
         is_passed: attempt.is_passed,

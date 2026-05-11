@@ -3,7 +3,7 @@ const jwt = require("jsonwebtoken");
 const ExcelJS = require("exceljs");
 const XLSX = require("xlsx");
 const { QueryTypes } = require("sequelize");
-const { User, sequelize } = require("../models");
+const { User, Teacher, sequelize } = require("../models");
 const config = require("../config/config");
 const {
   SUPER_ADMIN_ROLE,
@@ -424,8 +424,23 @@ exports.me = async (req, res) => {
   try {
     const user = await User.findByPk(req.user.id, {
       attributes: { exclude: ["password_hash"] },
+      include: [
+        {
+          model: Teacher,
+          as: "teacher_profile",
+          attributes: ["profile_picture"],
+          required: false,
+        },
+      ],
     });
-    return res.json({ success: true, data: user });
+    const userData = user.get({ plain: true });
+    // If teacher, use teacher's profile_picture, else use user's profile_image
+    if (userData.teacher_profile?.profile_picture) {
+      userData.profile_image = userData.teacher_profile.profile_picture;
+    }
+    delete userData.teacher_profile;
+    console.log("User data sent to client:", userData);
+    return res.json({ success: true, data: userData });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
