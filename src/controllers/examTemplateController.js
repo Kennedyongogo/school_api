@@ -105,3 +105,28 @@ exports.deleteExamTemplate = async (req, res) => {
     return res.status(400).json({ success: false, message: error.message });
   }
 };
+
+exports.duplicateExamTemplate = async (req, res) => {
+  try {
+    const source = await ExamTemplate.findByPk(req.params.id);
+    if (!source) return res.status(404).json({ success: false, message: "Exam template not found" });
+
+    const suffix = String(req.body?.name_suffix || " (Copy)");
+    const nextName = `${String(source.name || "Template").trim()}${suffix}`.slice(0, 200).trim();
+    const row = await ExamTemplate.create({
+      name: nextName || "Template (Copy)",
+      description: source.description || null,
+      school_profile_id: source.school_profile_id || null,
+      layout_json: source.layout_json && typeof source.layout_json === "object" ? source.layout_json : { elements: [] },
+      paper_size: source.paper_size || "A4",
+      orientation: source.orientation || "portrait",
+      is_active: true,
+      created_by: req.user?.id || source.created_by || null,
+      updated_by: req.user?.id || source.updated_by || null,
+    });
+    const duplicated = await ExamTemplate.findByPk(row.id, { include });
+    return res.status(201).json({ success: true, data: duplicated });
+  } catch (error) {
+    return res.status(400).json({ success: false, message: error.message });
+  }
+};

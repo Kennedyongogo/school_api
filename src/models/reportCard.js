@@ -14,6 +14,16 @@ module.exports = (sequelize) => {
         allowNull: false,
         references: { model: "students", key: "id" },
       },
+      curriculum_id: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        references: { model: "curricula", key: "id" },
+      },
+      curriculum_class_id: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        references: { model: "curriculum_classes", key: "id" },
+      },
       semester_id: {
         type: DataTypes.UUID,
         allowNull: false,
@@ -46,6 +56,26 @@ module.exports = (sequelize) => {
       },
       teacher_comments: {
         type: DataTypes.TEXT,
+        allowNull: true,
+      },
+      total_marks: {
+        type: DataTypes.DECIMAL(10, 2),
+        allowNull: true,
+      },
+      average_marks: {
+        type: DataTypes.DECIMAL(6, 2),
+        allowNull: true,
+      },
+      overall_grade: {
+        type: DataTypes.STRING(20),
+        allowNull: true,
+      },
+      overall_remarks: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
+      position_in_class: {
+        type: DataTypes.INTEGER,
         allowNull: true,
       },
       principal_signature: {

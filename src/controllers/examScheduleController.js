@@ -10,11 +10,29 @@ const {
   ExamSubmission,
   Student,
   InAppNotification,
+  ExamSessionLog,
 } = require("../models");
 const { Op } = require("sequelize");
 const crypto = require("crypto");
 
 const userSafe = { attributes: { exclude: ["password_hash"] } };
+
+async function teacherProfileFromReq(req) {
+  if (req.user?.role !== "teacher") return null;
+  return Teacher.findOne({ where: { user_id: req.user.id }, attributes: ["id", "user_id"] });
+}
+
+async function enforceTeacherScheduleOwnership(req, schedule) {
+  if (req.user?.role !== "teacher") return null;
+  const teacherProfile = await teacherProfileFromReq(req);
+  if (!teacherProfile) {
+    return { ok: false, code: 403, message: "Teacher profile not found for this user." };
+  }
+  if (String(schedule?.teacher_id || "") !== String(teacherProfile.id)) {
+    return { ok: false, code: 403, message: "Forbidden: this schedule is assigned to another invigilator." };
+  }
+  return { ok: true, teacherProfile };
+}
 
 const scheduleIncludes = [
   { model: Exam, as: "exam" },
@@ -162,6 +180,10 @@ const createSchedulePayload = (body, currentRow = null, userId = null) => {
 exports.listExamSchedules = async (req, res) => {
   try {
     const where = {};
+    const teacherProfile = await teacherProfileFromReq(req);
+    if (req.user?.role === "teacher" && !teacherProfile) {
+      return res.status(403).json({ success: false, message: "Teacher profile not found for this user." });
+    }
     if (req.query.exam_id) where.exam_id = req.query.exam_id;
     if (req.query.curriculum_id) where.curriculum_id = req.query.curriculum_id;
     if (req.query.curriculum_class_id) where.curriculum_class_id = req.query.curriculum_class_id;
@@ -174,6 +196,9 @@ exports.listExamSchedules = async (req, res) => {
       where.start_time = {
         [Op.between]: [new Date(`${date}T00:00:00.000Z`), new Date(`${date}T23:59:59.999Z`)],
       };
+    }
+    if (req.user?.role === "teacher" && teacherProfile?.id) {
+      where.teacher_id = teacherProfile.id;
     }
 
     const rows = await ExamSchedule.findAll({
@@ -222,6 +247,10 @@ exports.getExamSchedule = async (req, res) => {
     const row = await ExamSchedule.findByPk(req.params.id, { include: scheduleIncludes });
     if (!row) {
       return res.status(404).json({ success: false, message: "Exam schedule not found" });
+    }
+    const ownership = await enforceTeacherScheduleOwnership(req, row);
+    if (ownership && ownership.ok === false) {
+      return res.status(ownership.code).json({ success: false, message: ownership.message });
     }
     return res.json({ success: true, data: row });
   } catch (error) {
@@ -275,6 +304,10 @@ exports.initiateOnlineExamSchedule = async (req, res) => {
     if (!row) {
       return res.status(404).json({ success: false, message: "Exam schedule not found" });
     }
+    const ownership = await enforceTeacherScheduleOwnership(req, row);
+    if (ownership && ownership.ok === false) {
+      return res.status(ownership.code).json({ success: false, message: ownership.message });
+    }
     if (!row.is_active) {
       return res.status(400).json({ success: false, message: "Exam schedule is inactive" });
     }
@@ -315,6 +348,10 @@ exports.notifyOnlineExamClass = async (req, res) => {
 
     const row = await ExamSchedule.findByPk(id, { include: scheduleIncludes });
     if (!row) return res.status(404).json({ success: false, message: "Exam schedule not found" });
+    const ownership = await enforceTeacherScheduleOwnership(req, row);
+    if (ownership && ownership.ok === false) {
+      return res.status(ownership.code).json({ success: false, message: ownership.message });
+    }
     if (!row.curriculum_class_id) {
       return res.status(400).json({ success: false, message: "Exam schedule has no curriculum class." });
     }
@@ -374,6 +411,10 @@ exports.getOnlineExamTracking = async (req, res) => {
     const { id } = req.params;
     const row = await ExamSchedule.findByPk(id, { include: scheduleIncludes });
     if (!row) return res.status(404).json({ success: false, message: "Exam schedule not found" });
+    const ownership = await enforceTeacherScheduleOwnership(req, row);
+    if (ownership && ownership.ok === false) {
+      return res.status(ownership.code).json({ success: false, message: ownership.message });
+    }
 
     const attempts = await ExamAttempt.findAll({
       where: { exam_schedule_id: row.id },
@@ -388,6 +429,20 @@ exports.getOnlineExamTracking = async (req, res) => {
       ],
       attributes: ["id", "student_id", "status", "start_time", "end_time", "time_spent_seconds", "submitted_at", "created_at"],
     });
+    const attemptIds = attempts.map((a) => a.id).filter(Boolean);
+    const logs = attemptIds.length
+      ? await ExamSessionLog.findAll({
+          where: { exam_attempt_id: { [Op.in]: attemptIds } },
+          attributes: ["id", "exam_attempt_id", "event_type", "event_timestamp", "event_data"],
+          order: [["event_timestamp", "ASC"]],
+        })
+      : [];
+    const logsByAttempt = new Map();
+    for (const lg of logs) {
+      const key = lg.exam_attempt_id;
+      if (!logsByAttempt.has(key)) logsByAttempt.set(key, []);
+      logsByAttempt.get(key).push(lg);
+    }
 
     const recordings = Array.isArray(row.proctoring_rules_json?.recordings) ? row.proctoring_rules_json.recordings : [];
 
@@ -423,6 +478,10 @@ exports.createOnlineExamRecording = async (req, res) => {
     }
     const row = await ExamSchedule.findByPk(id);
     if (!row) return res.status(404).json({ success: false, message: "Exam schedule not found" });
+    const ownership = await enforceTeacherScheduleOwnership(req, row);
+    if (ownership && ownership.ok === false) {
+      return res.status(ownership.code).json({ success: false, message: ownership.message });
+    }
     let duration_seconds = 0;
     if (body.duration_seconds != null && body.duration_seconds !== "") {
       const n = parseInt(body.duration_seconds, 10);
@@ -445,12 +504,120 @@ exports.createOnlineExamRecording = async (req, res) => {
   }
 };
 
+exports.getExamScheduleProctorMonitor = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const schedule = await ExamSchedule.findByPk(id, { include: scheduleIncludes });
+    if (!schedule) return res.status(404).json({ success: false, message: "Exam schedule not found" });
+    const ownership = await enforceTeacherScheduleOwnership(req, schedule);
+    if (ownership && ownership.ok === false) {
+      return res.status(ownership.code).json({ success: false, message: ownership.message });
+    }
+    if (!schedule.curriculum_class_id) {
+      return res.status(400).json({ success: false, message: "Exam schedule has no curriculum class." });
+    }
+
+    const roster = await Student.findAll({
+      where: { curriculum_class_id: schedule.curriculum_class_id },
+      attributes: ["id", "admission_number", "user_id"],
+      include: [{ model: User, as: "user", attributes: ["id", "full_name", "username", "email"] }],
+      order: [[{ model: User, as: "user" }, "full_name", "ASC"]],
+    });
+
+    const attempts = await ExamAttempt.findAll({
+      where: { exam_schedule_id: schedule.id },
+      attributes: [
+        "id",
+        "student_id",
+        "status",
+        "start_time",
+        "end_time",
+        "submitted_at",
+        "webcam_enabled",
+        "tab_switch_count",
+        "warning_count",
+        "last_activity_at",
+        "client_presence_active",
+        "is_cancelled",
+        "cancellation_reason",
+      ],
+      order: [["created_at", "DESC"]],
+    });
+    const attemptIds = attempts.map((a) => a.id).filter(Boolean);
+    const logs = attemptIds.length
+      ? await ExamSessionLog.findAll({
+          where: { exam_attempt_id: { [Op.in]: attemptIds } },
+          attributes: ["id", "exam_attempt_id", "event_type", "event_timestamp", "event_data"],
+          order: [["event_timestamp", "ASC"]],
+        })
+      : [];
+    const logsByAttempt = new Map();
+    for (const lg of logs) {
+      const key = lg.exam_attempt_id;
+      if (!logsByAttempt.has(key)) logsByAttempt.set(key, []);
+      logsByAttempt.get(key).push(lg);
+    }
+    const attemptByStudent = new Map(attempts.map((a) => [a.student_id, a]));
+
+    const rows = roster.map((s) => {
+      const a = attemptByStudent.get(s.id);
+      const started = !!(a?.start_time);
+      const submitted = !!(a?.submitted_at) || a?.status === "completed";
+      const status = a?.is_cancelled
+        ? "closed"
+        : submitted
+          ? "submitted"
+          : started
+            ? (a?.status || "in_progress")
+            : "not_started";
+      return {
+        student: s,
+        attempt: a || null,
+        status,
+        tab_switch_count: a?.tab_switch_count ?? 0,
+        warning_count: a?.warning_count ?? 0,
+        webcam_enabled: a?.webcam_enabled ?? false,
+        last_activity_at: a?.last_activity_at ?? null,
+        is_cancelled: !!a?.is_cancelled,
+        cancellation_reason: a?.cancellation_reason || null,
+        session_logs: a?.id ? logsByAttempt.get(a.id) || [] : [],
+      };
+    });
+
+    const summary = rows.reduce(
+      (acc, r) => {
+        acc.total += 1;
+        if (r.status === "not_started") acc.not_started += 1;
+        else if (r.status === "submitted" || r.status === "completed") acc.submitted += 1;
+        else acc.in_progress += 1;
+        return acc;
+      },
+      { total: 0, not_started: 0, in_progress: 0, submitted: 0 }
+    );
+
+    return res.json({
+      success: true,
+      data: {
+        exam_schedule: schedule,
+        summary,
+        roster_rows: rows,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 /** Attendance snapshot for one exam schedule (derived from existing attempt/submission rows). */
 exports.getExamScheduleAttendance = async (req, res) => {
   try {
     const row = await ExamSchedule.findByPk(req.params.id, { include: scheduleIncludes });
     if (!row) {
       return res.status(404).json({ success: false, message: "Exam schedule not found" });
+    }
+    const ownership = await enforceTeacherScheduleOwnership(req, row);
+    if (ownership && ownership.ok === false) {
+      return res.status(ownership.code).json({ success: false, message: ownership.message });
     }
 
     const attempts = await ExamAttempt.findAll({

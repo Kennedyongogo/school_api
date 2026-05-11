@@ -15,6 +15,7 @@ const {
   ExamAttempt,
   ExamSubmission,
 } = require("../models");
+const { Op } = require("sequelize");
 
 const userSafe = { attributes: { exclude: ["password_hash"] } };
 
@@ -146,13 +147,20 @@ exports.listMyStudentExamSchedules = async (req, res) => {
     const where = {
       is_active: true,
       curriculum_class_id: student.curriculum_class_id,
+      status: { [Op.in]: ["scheduled", "live", "completed"] },
     };
     if (student.curriculum_id) where.curriculum_id = student.curriculum_id;
 
     const rows = await ExamSchedule.findAll({
       where,
       include: [
-        { model: Exam, as: "exam", attributes: ["id", "title", "status"] },
+        {
+          model: Exam,
+          as: "exam",
+          required: true,
+          where: { status: "published" },
+          attributes: ["id", "title", "status", "requires_webcam", "prevent_tab_switch"],
+        },
         { model: Curriculum, as: "curriculum", attributes: ["id", "name", "type"] },
         { model: CurriculumClass, as: "curriculum_class", attributes: ["id", "name", "code"] },
         { model: CurriculumClassLevel, as: "curriculum_class_level", attributes: ["id", "name"] },
@@ -198,9 +206,12 @@ exports.listMyStudentExamSchedules = async (req, res) => {
       const attendance =
         att || sub
           ? {
-              status: "Attended",
+              status: att?.is_cancelled ? "Disqualified" : att?.submitted_at || sub?.submitted_at ? "Submitted" : "Attended",
               started_at: att?.start_time || sub?.started_at || null,
               submitted_at: att?.submitted_at || sub?.submitted_at || null,
+              attempt_status: att?.status || null,
+              is_cancelled: !!att?.is_cancelled,
+              cancellation_reason: att?.cancellation_reason || null,
             }
           : { status: "Pending" };
       return {
@@ -212,8 +223,18 @@ exports.listMyStudentExamSchedules = async (req, res) => {
         proctoring_mode: r.proctoring_mode,
         requires_webcam: r.requires_webcam,
         prevent_tab_switch: r.prevent_tab_switch,
+        effective_requires_webcam:
+          r.requires_webcam == null ? !!r?.exam?.requires_webcam : !!r.requires_webcam,
+        effective_prevent_tab_switch:
+          r.prevent_tab_switch == null ? !!r?.exam?.prevent_tab_switch : !!r.prevent_tab_switch,
         meeting_provider: r.meeting_provider,
         meeting_join_url: r.meeting_join_url,
+        exam_access_policy:
+          r.proctoring_rules_json &&
+          typeof r.proctoring_rules_json === "object" &&
+          r.proctoring_rules_json.exam_access_policy === "paper_plus_room_required"
+            ? "paper_plus_room_required"
+            : "paper_only",
         curriculum: r.curriculum || null,
         curriculum_class: r.curriculum_class || null,
         curriculum_class_level: r.curriculum_class_level || null,

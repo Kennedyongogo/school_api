@@ -27,6 +27,10 @@ module.exports = (sequelize) => {
         type: DataTypes.JSONB,
         allowNull: true,
       },
+      marks_obtained: {
+        type: DataTypes.DECIMAL(5, 2),
+        allowNull: true,
+      },
     },
     {
       tableName: "exam_answers",

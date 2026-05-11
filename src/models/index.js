@@ -24,6 +24,10 @@ const ProctoringSession = require("./proctoringSession")(sequelize);
 const ProctoringEvent = require("./proctoringEvent")(sequelize);
 const ProctoringRecording = require("./proctoringRecording")(sequelize);
 const GradingScale = require("./gradingScale")(sequelize);
+const GradingAssignment = require("./gradingAssignment")(sequelize);
+const AssessmentComponent = require("./assessmentComponent")(sequelize);
+const SubjectGradingScale = require("./subjectGradingScale")(sequelize);
+const OverallGradingScale = require("./overallGradingScale")(sequelize);
 const AcademicYear = require("./academicYear")(sequelize);
 const Semester = require("./semester")(sequelize);
 const AssessmentExamType = require("./examType")(sequelize);
@@ -163,6 +167,10 @@ const models = {
   ProctoringEvent,
   ProctoringRecording,
   GradingScale,
+  GradingAssignment,
+  AssessmentComponent,
+  SubjectGradingScale,
+  OverallGradingScale,
   AcademicYear,
   Semester,
   AssessmentExamType,
@@ -284,11 +292,11 @@ const initializeModels = async () => {
     await GradingScale.sync({ force: false, alter: false });
     await AssessmentExamType.sync({ force: false, alter: false });
     await GradeFormula.sync({ force: false, alter: false });
-    await StudentExamResult.sync({ force: false, alter: false });
+    await StudentExamResult.sync({ force: false, alter: true });
     await SubjectAverage.sync({ force: false, alter: false });
     await OverallAverage.sync({ force: false, alter: false });
-    await ReportCard.sync({ force: false, alter: false });
-    await ReportCardItem.sync({ force: false, alter: false });
+    await ReportCard.sync({ force: false, alter: true });
+    await ReportCardItem.sync({ force: false, alter: true });
     await Syllabus.sync({ force: false, alter: false });
     await SyllabusChapter.sync({ force: false, alter: false });
     await TeacherAttendance.sync({ force: false, alter: false });
@@ -300,11 +308,11 @@ const initializeModels = async () => {
     await AcademicTerm.sync({ force: false, alter: false });
     await SchoolProfile.sync({ force: false, alter: false });
     await ExamTemplate.sync({ force: false, alter: false });
-    await Exam.sync({ force: false, alter: false });
+    await Exam.sync({ force: false, alter: true });
     await ExamSchedule.sync({ force: false, alter: true });
     await ExamQuestion.sync({ force: false, alter: false });
     await ExamSubmission.sync({ force: false, alter: false });
-    await ExamAnswer.sync({ force: false, alter: false });
+    await ExamAnswer.sync({ force: false, alter: true });
     await InstallmentPlan.sync({ force: false, alter: false });
     await StudentInstallmentPlan.sync({ force: false, alter: false });
     await Installment.sync({ force: false, alter: false });
@@ -321,6 +329,10 @@ const initializeModels = async () => {
     await CurriculumSubjectTopic.sync({ force: false, alter: false });
     await CurriculumSubjectSubtopic.sync({ force: false, alter: false });
     await CurriculumSubjectGradingBand.sync({ force: false, alter: false });
+    await SubjectGradingScale.sync({ force: false, alter: false });
+    await OverallGradingScale.sync({ force: false, alter: false });
+    await GradingAssignment.sync({ force: false, alter: false });
+    await AssessmentComponent.sync({ force: false, alter: false });
     await TeacherDepartment.sync({ force: false, alter: false });
     await TeacherCurriculumJoin.sync({ force: false, alter: false });
     await TeacherCurriculumSubject.sync({ force: false, alter: false });
@@ -553,6 +565,12 @@ const setupAssociations = () => {
     Exam.belongsTo(User, { foreignKey: "created_by", as: "creator" });
     ExamTemplate.hasMany(Exam, { foreignKey: "template_id", as: "exams" });
     Exam.belongsTo(ExamTemplate, { foreignKey: "template_id", as: "template" });
+    Curriculum.hasMany(Exam, { foreignKey: "curriculum_id", as: "exams" });
+    Exam.belongsTo(Curriculum, { foreignKey: "curriculum_id", as: "curriculum" });
+    CurriculumClass.hasMany(Exam, { foreignKey: "curriculum_class_id", as: "exams" });
+    Exam.belongsTo(CurriculumClass, { foreignKey: "curriculum_class_id", as: "curriculum_class" });
+    Semester.hasMany(Exam, { foreignKey: "semester_id", as: "exams" });
+    Exam.belongsTo(Semester, { foreignKey: "semester_id", as: "semester" });
 
     Exam.hasMany(ExamSchedule, { foreignKey: "exam_id", as: "schedules" });
     ExamSchedule.belongsTo(Exam, { foreignKey: "exam_id", as: "exam" });
@@ -785,6 +803,22 @@ const setupAssociations = () => {
       foreignKey: "subject_id",
       as: "subject",
     });
+    CurriculumSubject.hasMany(StudentExamResult, {
+      foreignKey: "curriculum_subject_id",
+      as: "student_exam_results",
+    });
+    StudentExamResult.belongsTo(CurriculumSubject, {
+      foreignKey: "curriculum_subject_id",
+      as: "curriculum_subject",
+    });
+    Exam.hasMany(StudentExamResult, {
+      foreignKey: "exam_id",
+      as: "student_exam_results",
+    });
+    StudentExamResult.belongsTo(Exam, {
+      foreignKey: "exam_id",
+      as: "exam",
+    });
 
     ExamAttempt.hasMany(StudentExamResult, {
       foreignKey: "exam_attempt_id",
@@ -899,6 +933,22 @@ const setupAssociations = () => {
       foreignKey: "academic_year_id",
       as: "academic_year",
     });
+    Curriculum.hasMany(ReportCard, {
+      foreignKey: "curriculum_id",
+      as: "report_cards",
+    });
+    ReportCard.belongsTo(Curriculum, {
+      foreignKey: "curriculum_id",
+      as: "curriculum",
+    });
+    CurriculumClass.hasMany(ReportCard, {
+      foreignKey: "curriculum_class_id",
+      as: "report_cards",
+    });
+    ReportCard.belongsTo(CurriculumClass, {
+      foreignKey: "curriculum_class_id",
+      as: "curriculum_class",
+    });
 
     ReportCard.hasMany(ReportCardItem, {
       foreignKey: "report_card_id",
@@ -916,6 +966,14 @@ const setupAssociations = () => {
     ReportCardItem.belongsTo(Subject, {
       foreignKey: "subject_id",
       as: "subject",
+    });
+    CurriculumSubject.hasMany(ReportCardItem, {
+      foreignKey: "curriculum_subject_id",
+      as: "report_card_items",
+    });
+    ReportCardItem.belongsTo(CurriculumSubject, {
+      foreignKey: "curriculum_subject_id",
+      as: "curriculum_subject",
     });
 
     ClassAssignment.hasMany(Syllabus, {
@@ -1512,6 +1570,122 @@ const setupAssociations = () => {
     CurriculumSubjectGradingBand.belongsTo(CurriculumSubject, {
       foreignKey: "curriculum_subject_id",
       as: "curriculum_subject",
+    });
+
+    Curriculum.hasMany(SubjectGradingScale, {
+      foreignKey: "curriculum_id",
+      as: "subject_grading_scales",
+    });
+    SubjectGradingScale.belongsTo(Curriculum, {
+      foreignKey: "curriculum_id",
+      as: "curriculum",
+    });
+    CurriculumClass.hasMany(SubjectGradingScale, {
+      foreignKey: "curriculum_class_id",
+      as: "subject_grading_scales",
+    });
+    SubjectGradingScale.belongsTo(CurriculumClass, {
+      foreignKey: "curriculum_class_id",
+      as: "curriculum_class",
+    });
+    CurriculumSubject.hasMany(SubjectGradingScale, {
+      foreignKey: "curriculum_subject_id",
+      as: "grading_scales",
+    });
+    SubjectGradingScale.belongsTo(CurriculumSubject, {
+      foreignKey: "curriculum_subject_id",
+      as: "curriculum_subject",
+    });
+
+    Curriculum.hasMany(OverallGradingScale, {
+      foreignKey: "curriculum_id",
+      as: "overall_grading_scales",
+    });
+    OverallGradingScale.belongsTo(Curriculum, {
+      foreignKey: "curriculum_id",
+      as: "curriculum",
+    });
+    CurriculumClass.hasMany(OverallGradingScale, {
+      foreignKey: "curriculum_class_id",
+      as: "overall_grading_scales",
+    });
+    OverallGradingScale.belongsTo(CurriculumClass, {
+      foreignKey: "curriculum_class_id",
+      as: "curriculum_class",
+    });
+
+    Curriculum.hasMany(GradingAssignment, {
+      foreignKey: "curriculum_id",
+      as: "grading_assignments",
+    });
+    GradingAssignment.belongsTo(Curriculum, {
+      foreignKey: "curriculum_id",
+      as: "curriculum",
+    });
+    CurriculumClass.hasMany(GradingAssignment, {
+      foreignKey: "curriculum_class_id",
+      as: "grading_assignments",
+    });
+    GradingAssignment.belongsTo(CurriculumClass, {
+      foreignKey: "curriculum_class_id",
+      as: "curriculum_class",
+    });
+    CurriculumClassLevel.hasMany(GradingAssignment, {
+      foreignKey: "curriculum_class_level_id",
+      as: "grading_assignments",
+    });
+    GradingAssignment.belongsTo(CurriculumClassLevel, {
+      foreignKey: "curriculum_class_level_id",
+      as: "curriculum_class_level",
+    });
+    CurriculumSubject.hasMany(GradingAssignment, {
+      foreignKey: "curriculum_subject_id",
+      as: "grading_assignments",
+    });
+    GradingAssignment.belongsTo(CurriculumSubject, {
+      foreignKey: "curriculum_subject_id",
+      as: "curriculum_subject",
+    });
+
+    Curriculum.hasMany(AssessmentComponent, {
+      foreignKey: "curriculum_id",
+      as: "assessment_components",
+    });
+    AssessmentComponent.belongsTo(Curriculum, {
+      foreignKey: "curriculum_id",
+      as: "curriculum",
+    });
+    CurriculumClass.hasMany(AssessmentComponent, {
+      foreignKey: "curriculum_class_id",
+      as: "assessment_components",
+    });
+    AssessmentComponent.belongsTo(CurriculumClass, {
+      foreignKey: "curriculum_class_id",
+      as: "curriculum_class",
+    });
+    CurriculumClassLevel.hasMany(AssessmentComponent, {
+      foreignKey: "curriculum_class_level_id",
+      as: "assessment_components",
+    });
+    AssessmentComponent.belongsTo(CurriculumClassLevel, {
+      foreignKey: "curriculum_class_level_id",
+      as: "curriculum_class_level",
+    });
+    CurriculumSubject.hasMany(AssessmentComponent, {
+      foreignKey: "curriculum_subject_id",
+      as: "assessment_components",
+    });
+    AssessmentComponent.belongsTo(CurriculumSubject, {
+      foreignKey: "curriculum_subject_id",
+      as: "curriculum_subject",
+    });
+    Semester.hasMany(AssessmentComponent, {
+      foreignKey: "semester_id",
+      as: "assessment_components",
+    });
+    AssessmentComponent.belongsTo(Semester, {
+      foreignKey: "semester_id",
+      as: "semester",
     });
 
     GradeLevel.hasMany(Program, {

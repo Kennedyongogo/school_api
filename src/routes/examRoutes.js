@@ -6,6 +6,7 @@ const {
   createExam,
   updateExam,
   deleteExam,
+  duplicateExam,
   generateDiagramImage,
   generateQuestionsFromDocument,
   extractQuestionsWithAi,
@@ -13,6 +14,10 @@ const {
   getMyExamSubmission,
   saveSubmissionAnswers,
   submitExamSubmission,
+  listExamSubmissionsForMarking,
+  markExamSubmission,
+  markExamAnswer,
+  cleanupExamStaleDraftSubmissions,
 } = require("../controllers/examController");
 const { authenticateUser, authorizeRoles } = require("../middleware/auth");
 const { errorHandler } = require("../middleware/errorHandler");
@@ -25,6 +30,14 @@ router.get("/", authenticateUser, authorizeRoles(TEACH_OR_STAFF), listExams);
 router.post("/", authenticateUser, authorizeRoles(ADMIN_PORTAL_API_ROLES), createExam);
 router.post("/ai/diagram", authenticateUser, authorizeRoles(TEACH_OR_STAFF), generateDiagramImage);
 router.post(
+  "/ocr/extract-questions-from-document",
+  authenticateUser,
+  authorizeRoles(TEACH_OR_STAFF),
+  uploadDocument,
+  handleUploadError,
+  generateQuestionsFromDocument
+);
+router.post(
   "/ai/generate-questions-from-document",
   authenticateUser,
   authorizeRoles(TEACH_OR_STAFF),
@@ -36,8 +49,13 @@ router.post("/ai/extract-questions", authenticateUser, authorizeRoles(TEACH_OR_S
 router.get("/:id", authenticateUser, authorizeRoles(TEACH_OR_STAFF), getExam);
 router.put("/:id", authenticateUser, authorizeRoles(SCHOOL_ADMIN_ROLES), updateExam);
 router.delete("/:id", authenticateUser, authorizeRoles(SCHOOL_ADMIN_ROLES), deleteExam);
+router.post("/:id/duplicate", authenticateUser, authorizeRoles(SCHOOL_ADMIN_ROLES), duplicateExam);
 router.post("/:id/submissions", authenticateUser, authorizeRoles(["student"]), createExamSubmission);
 router.get("/:id/submissions/me", authenticateUser, authorizeRoles(["student"]), getMyExamSubmission);
+router.get("/:id/submissions", authenticateUser, authorizeRoles(TEACH_OR_STAFF), listExamSubmissionsForMarking);
+router.put("/:id/submissions/:submissionId/mark", authenticateUser, authorizeRoles(TEACH_OR_STAFF), markExamSubmission);
+router.put("/:id/submissions/:submissionId/answers/:answerId/mark", authenticateUser, authorizeRoles(TEACH_OR_STAFF), markExamAnswer);
+router.post("/:id/submissions/cleanup-stale-drafts", authenticateUser, authorizeRoles(SCHOOL_ADMIN_ROLES), cleanupExamStaleDraftSubmissions);
 router.put("/submissions/:submissionId/answers", authenticateUser, authorizeRoles(["student"]), saveSubmissionAnswers);
 router.put("/submissions/:submissionId/submit", authenticateUser, authorizeRoles(["student"]), submitExamSubmission);
 

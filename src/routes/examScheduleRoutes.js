@@ -9,6 +9,7 @@ const {
   notifyOnlineExamClass,
   getOnlineExamTracking,
   createOnlineExamRecording,
+  getExamScheduleProctorMonitor,
   getExamScheduleAttendance,
   updateExamSchedule,
   deleteExamSchedule,
@@ -27,6 +28,7 @@ router.post("/:id/live-session/initiate", authenticateUser, authorizeRoles(TEACH
 router.post("/:id/notify-class", authenticateUser, authorizeRoles(TEACH_OR_STAFF), notifyOnlineExamClass);
 router.get("/:id/live-tracking", authenticateUser, authorizeRoles(TEACH_OR_STAFF), getOnlineExamTracking);
 router.post("/:id/live-recording", authenticateUser, authorizeRoles(TEACH_OR_STAFF), createOnlineExamRecording);
+router.get("/:id/proctor-monitor", authenticateUser, authorizeRoles(TEACH_OR_STAFF), getExamScheduleProctorMonitor);
 router.get("/:id/attendance", authenticateUser, authorizeRoles(TEACH_OR_STAFF), getExamScheduleAttendance);
 router.get("/:id", authenticateUser, authorizeRoles(TEACH_OR_STAFF), getExamSchedule);
 router.put("/:id", authenticateUser, authorizeRoles(ADMIN_PORTAL_API_ROLES), updateExamSchedule);

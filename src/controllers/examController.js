@@ -19,6 +19,8 @@ const fs = require("fs");
 const OpenAI = require("openai");
 const pdfParse = require("pdf-parse");
 const mammoth = require("mammoth");
+const Tesseract = require("tesseract.js");
+const { Op } = require("sequelize");
 
 const deepseekClient = new OpenAI({
   apiKey: process.env.DEEPSEEK_API_KEY,
@@ -124,6 +126,18 @@ const normalizeExamLayout = (layout = {}) => {
 const findStudentByUser = async (userId) => {
   if (!userId) return null;
   return Student.findOne({ where: { user_id: userId } });
+};
+
+const hasMeaningfulAnswer = (ans) => {
+  const hasText = Boolean(String(ans?.answer_text || "").trim());
+  const json = ans?.answer_json;
+  if (json == null) return hasText;
+  if (Array.isArray(json)) return hasText || json.length > 0;
+  if (typeof json === "object") {
+    const vals = Object.values(json || {});
+    return hasText || vals.some((v) => String(v ?? "").trim() !== "");
+  }
+  return hasText || String(json).trim() !== "";
 };
 
 exports.generateDiagramImage = async (req, res) => {
@@ -362,7 +376,59 @@ const extractDocumentText = async (reqFile, fileBuffer) => {
     return String(out?.value || "").trim();
   }
 
+  if (
+    mime.startsWith("image/") ||
+    originalName.endsWith(".png") ||
+    originalName.endsWith(".jpg") ||
+    originalName.endsWith(".jpeg") ||
+    originalName.endsWith(".webp") ||
+    originalName.endsWith(".bmp") ||
+    originalName.endsWith(".tif") ||
+    originalName.endsWith(".tiff")
+  ) {
+    const ocrResult = await Tesseract.recognize(fileBuffer, "eng", {});
+    return String(ocrResult?.data?.text || "").trim();
+  }
+
   return "";
+};
+
+const parseQuestionsFromExtractedText = (text, maxCount = 10) => {
+  const cleaned = String(text || "")
+    .replace(/\r/g, "")
+    .replace(/\t/g, " ")
+    .replace(/[ ]{2,}/g, " ")
+    .trim();
+  if (!cleaned) return [];
+
+  const chunks = cleaned
+    .split(/\n(?=\s*(?:Q(?:uestion)?\s*)?\d+[\.\):-]\s+)/i)
+    .map((x) => x.trim())
+    .filter(Boolean);
+
+  const sourceChunks =
+    chunks.length > 1
+      ? chunks
+      : cleaned
+          .split(/\n{2,}/)
+          .map((x) => x.trim())
+          .filter((x) => x.length >= 10);
+
+  const out = [];
+  for (let i = 0; i < sourceChunks.length && out.length < maxCount; i += 1) {
+    const questionText = sourceChunks[i].replace(/^\s*(?:Q(?:uestion)?\s*)?\d+[\.\):-]\s*/i, "").trim();
+    if (!questionText) continue;
+    out.push({
+      text: questionText,
+      type: "short_text",
+      options: [],
+      correctAnswer: "",
+      marks: 5,
+      explanation: "",
+      order_number: out.length + 1,
+    });
+  }
+  return out;
 };
 
 exports.generateQuestionsFromDocument = async (req, res) => {
@@ -373,180 +439,39 @@ exports.generateQuestionsFromDocument = async (req, res) => {
     }
 
     const questionCount = Math.max(1, Math.min(50, Number(req.body?.questionCount) || 10));
-    const difficulty = String(req.body?.difficulty || "medium").trim();
     const fileBuffer = fs.readFileSync(req.file.path);
     const fileMime = String(req.file.mimetype || "application/octet-stream");
     const extractedText = await extractDocumentText(req.file, fileBuffer);
     if (!extractedText) {
       return res.status(400).json({
         success: false,
-        message: `Unsupported file type for text extraction (${fileMime}). Use PDF, DOCX, or text files.`,
+        message: `Unsupported file type for OCR extraction (${fileMime}). Use PDF, DOCX, TXT, or image files.`,
       });
     }
-    const maxChars = 45000;
-    const clippedText = extractedText.length > maxChars ? extractedText.slice(0, maxChars) : extractedText;
-
-    const prompt = `You are an expert exam creator. Based on the document content, generate ${questionCount} ${difficulty} exam questions.
-
-Return ONLY a JSON array (no other text).
-Each item must have:
-- "text": question text
-- "type": one of "multiple_choice", "true_false", "essay", "short_text"
-- "options": array of option strings for multiple_choice (empty for others)
-- "correctAnswer": short correct answer
-- "marks": number (default 5)
-- "explanation": short explanation
-
-DOCUMENT CONTENT:
-${clippedText}`;
-
-    // ========== 1) PRIMARY: OpenAI GPT-4o via Vercel AI Gateway ==========
-    const vercelApiKey = String(process.env.VERCEL_AI_API_KEY || "").trim();
-    if (vercelApiKey) {
-      try {
-        console.log("📄 Trying OpenAI GPT-4o via Vercel AI Gateway...");
-        const vercelClient = new OpenAI({
-          apiKey: vercelApiKey,
-          baseURL: "https://gateway.ai.vercel.ai/v1",
-        });
-
-        const response = await vercelClient.chat.completions.create({
-          model: "openai/gpt-4o",
-          messages: [{ role: "user", content: prompt }],
-          response_format: { type: "json_object" },
-          temperature: 0.7,
-          max_tokens: 4096,
-        });
-
-        const content = response.choices?.[0]?.message?.content;
-        if (content) {
-          let parsed;
-          try {
-            parsed = JSON.parse(content);
-          } catch {
-            parsed = extractJSONArray(content);
-          }
-          const questionsArray = Array.isArray(parsed) ? parsed : parsed.questions || parsed.data || [];
-          const normalized = normalizeExtractedQuestions(questionsArray);
-
-          if (normalized.length) {
-            console.log(`✅ GPT-4o extracted ${normalized.length} questions successfully!`);
-            return res.json({
-              success: true,
-              data: normalized,
-              provider: "vercel-openai",
-              modelUsed: "openai/gpt-4o",
-              usage: response.usage,
-            });
-          }
-        }
-      } catch (vercelError) {
-        console.error("⚠️ Vercel/GPT-4o failed:", vercelError.response?.data?.error?.message || vercelError.message);
-      }
+    const parsed = parseQuestionsFromExtractedText(extractedText, questionCount);
+    if (!parsed.length) {
+      return res.status(422).json({
+        success: false,
+        message:
+          "Text was extracted, but no clear questions were detected. Use numbered questions (1., 2., 3.) or review document quality.",
+      });
     }
 
-    // ========== 2) FALLBACK 1: OpenRouter Free Tier ==========
-    const openrouterKey = String(process.env.OPENROUTER_API_KEY || "").trim();
-    if (openrouterKey) {
-      try {
-        console.log("📄 Falling back to OpenRouter free tier...");
-        const openrouterClient = new OpenAI({
-          apiKey: openrouterKey,
-          baseURL: "https://openrouter.ai/api/v1",
-        });
-
-        const response = await openrouterClient.chat.completions.create({
-          model: "deepseek/deepseek-chat:free",
-          messages: [{ role: "user", content: prompt }],
-          response_format: { type: "json_object" },
-          temperature: 0.7,
-          max_tokens: 4096,
-        });
-
-        const content = response.choices?.[0]?.message?.content;
-        if (content) {
-          let parsed;
-          try {
-            parsed = JSON.parse(content);
-          } catch {
-            parsed = extractJSONArray(content);
-          }
-          const questionsArray = Array.isArray(parsed) ? parsed : parsed.questions || parsed.data || [];
-          const normalized = normalizeExtractedQuestions(questionsArray);
-
-          if (normalized.length) {
-            console.log(`✅ OpenRouter extracted ${normalized.length} questions successfully!`);
-            return res.json({
-              success: true,
-              data: normalized,
-              provider: "openrouter-free",
-              modelUsed: "deepseek/deepseek-chat:free",
-            });
-          }
-        }
-      } catch (openrouterError) {
-        console.error("⚠️ OpenRouter free tier failed:", openrouterError.message);
-      }
-    }
-
-    // ========== 3) FALLBACK 2: DeepSeek (requires balance) ==========
-    const deepseekApiKey = String(process.env.DEEPSEEK_API_KEY || "").trim();
-    if (deepseekApiKey) {
-      try {
-        console.log("📄 Falling back to DeepSeek API...");
-        const deepseekClientLocal = new OpenAI({
-          apiKey: deepseekApiKey,
-          baseURL: "https://api.deepseek.com/v1",
-        });
-
-        const response = await deepseekClientLocal.chat.completions.create({
-          model: "deepseek-chat",
-          messages: [{ role: "user", content: prompt }],
-          response_format: { type: "json_object" },
-          temperature: 0.7,
-          max_tokens: 4096,
-        });
-
-        const content = response.choices?.[0]?.message?.content;
-        if (content) {
-          let parsed;
-          try {
-            parsed = JSON.parse(content);
-          } catch {
-            parsed = extractJSONArray(content);
-          }
-          const questionsArray = Array.isArray(parsed) ? parsed : parsed.questions || parsed.data || [];
-          const normalized = normalizeExtractedQuestions(questionsArray);
-
-          if (normalized.length) {
-            console.log(`✅ DeepSeek extracted ${normalized.length} questions successfully!`);
-            return res.json({
-              success: true,
-              data: normalized,
-              provider: "deepseek",
-              modelUsed: "deepseek-chat",
-              usage: response.usage,
-            });
-          }
-        }
-      } catch (deepseekError) {
-        console.error("⚠️ DeepSeek failed:", deepseekError.message);
-      }
-    }
-
-    // ========== All providers failed ==========
-    return res.status(502).json({
-      success: false,
-      message: "All AI providers failed. Please check your API keys or add funds.",
-      tried: ["vercel-openai", "openrouter", "deepseek"],
+    return res.json({
+      success: true,
+      data: parsed,
+      provider: "ocr-rules",
+      modelUsed: "none",
+      meta: {
+        extraction: "direct_text_or_ocr",
+        extracted_characters: extractedText.length,
+        raw_text: extractedText,
+      },
     });
   } catch (error) {
-    const upstream = error?.response?.data;
-    console.error("API error:", JSON.stringify(upstream || error.message, null, 2));
-
-    return res.status(502).json({
+    return res.status(500).json({
       success: false,
-      message: upstream?.error?.message || error.message || "Failed generating questions from document.",
+      message: error.message || "Failed extracting questions from document.",
     });
   } finally {
     if (uploadedPath) {
@@ -628,7 +553,231 @@ Return ONLY valid JSON array, no markdown, no explanation.
 
     return res.status(502).json({ success: false, message: lastErrorMessage });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message || "Failed extracting questions." });
+    return handleErr(res, error);
+  }
+};
+
+exports.markExamAnswer = async (req, res) => {
+  try {
+    const exam = await Exam.findByPk(req.params.id);
+    if (!exam) return res.status(404).json({ success: false, message: "Exam not found" });
+    const submission = await ExamSubmission.findByPk(req.params.submissionId);
+    if (!submission || submission.exam_id !== exam.id) {
+      return res.status(404).json({ success: false, message: "Submission not found for this exam" });
+    }
+    const answer = await ExamAnswer.findByPk(req.params.answerId);
+    if (!answer || answer.submission_id !== submission.id) {
+      return res.status(404).json({ success: false, message: "Answer not found for this submission" });
+    }
+    const marks = Number(req.body?.marks_obtained);
+    if (!Number.isFinite(marks) || marks < 0) {
+      return res.status(400).json({ success: false, message: "marks_obtained must be a valid non-negative number." });
+    }
+    const questionMarks = Number(answer.question?.marks || 0);
+    if (questionMarks > 0 && marks > questionMarks) {
+      return res.status(400).json({ success: false, message: `marks_obtained cannot exceed question marks (${questionMarks}).` });
+    }
+    await answer.update({ marks_obtained: marks });
+    // Recalculate total score
+    const allAnswers = await ExamAnswer.findAll({
+      where: { submission_id: submission.id },
+      include: [{ model: ExamQuestion, as: "question" }]
+    });
+    const totalObtained = allAnswers.reduce((sum, a) => sum + Number(a.marks_obtained || 0), 0);
+    const totalPossible = allAnswers.reduce((sum, a) => sum + Number(a.question?.marks || 0), 0);
+    let attempt = await ExamAttempt.findOne({
+      where: { exam_id: exam.id, student_id: submission.student_id },
+      order: [["updated_at", "DESC"]],
+    });
+    if (!attempt) {
+      attempt = await ExamAttempt.create({
+        exam_id: exam.id,
+        student_id: submission.student_id,
+        status: "completed",
+        start_time: submission.started_at || submission.created_at || new Date(),
+        end_time: submission.submitted_at || new Date(),
+        submitted_at: submission.submitted_at || new Date(),
+      });
+    }
+    const percentage = totalPossible > 0 ? Number(((totalObtained / totalPossible) * 100).toFixed(2)) : 0;
+    const passMark = Number(exam.passing_marks || 0);
+    const isPassed = totalObtained >= passMark;
+    await attempt.update({
+      total_score: totalObtained,
+      percentage,
+      is_passed: isPassed,
+    });
+    return res.json({ success: true, data: { marks_obtained: marks, total_score: totalObtained, percentage, is_passed: isPassed } });
+  } catch (error) {
+    return handleErr(res, error);
+  }
+};
+
+exports.markExamAnswer = async (req, res) => {
+  try {
+    const exam = await Exam.findByPk(req.params.id);
+    if (!exam) return res.status(404).json({ success: false, message: "Exam not found" });
+    const submission = await ExamSubmission.findByPk(req.params.submissionId);
+    if (!submission || submission.exam_id !== exam.id) {
+      return res.status(404).json({ success: false, message: "Submission not found for this exam" });
+    }
+    const answer = await ExamAnswer.findByPk(req.params.answerId);
+    if (!answer || answer.submission_id !== submission.id) {
+      return res.status(404).json({ success: false, message: "Answer not found for this submission" });
+    }
+    const marks = Number(req.body?.marks_obtained);
+    if (!Number.isFinite(marks) || marks < 0) {
+      return res.status(400).json({ success: false, message: "marks_obtained must be a valid non-negative number." });
+    }
+    const questionMarks = Number(answer.question?.marks || 0);
+    if (questionMarks > 0 && marks > questionMarks) {
+      return res.status(400).json({ success: false, message: `marks_obtained cannot exceed question marks (${questionMarks}).` });
+    }
+    await answer.update({ marks_obtained: marks });
+    // Recalculate total score
+    const allAnswers = await ExamAnswer.findAll({
+      where: { submission_id: submission.id },
+      include: [{ model: ExamQuestion, as: "question" }]
+    });
+    const totalObtained = allAnswers.reduce((sum, a) => sum + Number(a.marks_obtained || 0), 0);
+    const totalPossible = allAnswers.reduce((sum, a) => sum + Number(a.question?.marks || 0), 0);
+    let attempt = await ExamAttempt.findOne({
+      where: { exam_id: exam.id, student_id: submission.student_id },
+      order: [["updated_at", "DESC"]],
+    });
+    if (!attempt) {
+      attempt = await ExamAttempt.create({
+        exam_id: exam.id,
+        student_id: submission.student_id,
+        status: "completed",
+        start_time: submission.started_at || submission.created_at || new Date(),
+        end_time: submission.submitted_at || new Date(),
+        submitted_at: submission.submitted_at || new Date(),
+      });
+    }
+    const percentage = totalPossible > 0 ? Number(((totalObtained / totalPossible) * 100).toFixed(2)) : 0;
+    const passMark = Number(exam.passing_marks || 0);
+    const isPassed = totalObtained >= passMark;
+    await attempt.update({
+      total_score: totalObtained,
+      percentage,
+      is_passed: isPassed,
+    });
+    return res.json({ success: true, data: { marks_obtained: marks, total_score: totalObtained, percentage, is_passed: isPassed } });
+  } catch (error) {
+    return handleErr(res, error);
+  }
+};
+
+exports.markExamAnswer = async (req, res) => {
+  try {
+    const exam = await Exam.findByPk(req.params.id);
+    if (!exam) return res.status(404).json({ success: false, message: "Exam not found" });
+    const submission = await ExamSubmission.findByPk(req.params.submissionId);
+    if (!submission || submission.exam_id !== exam.id) {
+      return res.status(404).json({ success: false, message: "Submission not found for this exam" });
+    }
+    const answer = await ExamAnswer.findByPk(req.params.answerId);
+    if (!answer || answer.submission_id !== submission.id) {
+      return res.status(404).json({ success: false, message: "Answer not found for this submission" });
+    }
+    const marks = Number(req.body?.marks_obtained);
+    if (!Number.isFinite(marks) || marks < 0) {
+      return res.status(400).json({ success: false, message: "marks_obtained must be a valid non-negative number." });
+    }
+    const questionMarks = Number(answer.question?.marks || 0);
+    if (questionMarks > 0 && marks > questionMarks) {
+      return res.status(400).json({ success: false, message: `marks_obtained cannot exceed question marks (${questionMarks}).` });
+    }
+    await answer.update({ marks_obtained: marks });
+    // Recalculate total score
+    const allAnswers = await ExamAnswer.findAll({
+      where: { submission_id: submission.id },
+      include: [{ model: ExamQuestion, as: "question" }]
+    });
+    const totalObtained = allAnswers.reduce((sum, a) => sum + Number(a.marks_obtained || 0), 0);
+    const totalPossible = allAnswers.reduce((sum, a) => sum + Number(a.question?.marks || 0), 0);
+    let attempt = await ExamAttempt.findOne({
+      where: { exam_id: exam.id, student_id: submission.student_id },
+      order: [["updated_at", "DESC"]],
+    });
+    if (!attempt) {
+      attempt = await ExamAttempt.create({
+        exam_id: exam.id,
+        student_id: submission.student_id,
+        status: "completed",
+        start_time: submission.started_at || submission.created_at || new Date(),
+        end_time: submission.submitted_at || new Date(),
+        submitted_at: submission.submitted_at || new Date(),
+      });
+    }
+    const percentage = totalPossible > 0 ? Number(((totalObtained / totalPossible) * 100).toFixed(2)) : 0;
+    const passMark = Number(exam.passing_marks || 0);
+    const isPassed = totalObtained >= passMark;
+    await attempt.update({
+      total_score: totalObtained,
+      percentage,
+      is_passed: isPassed,
+    });
+    return res.json({ success: true, data: { marks_obtained: marks, total_score: totalObtained, percentage, is_passed: isPassed } });
+  } catch (error) {
+    return handleErr(res, error);
+  }
+};
+
+exports.markExamAnswer = async (req, res) => {
+  try {
+    const exam = await Exam.findByPk(req.params.id);
+    if (!exam) return res.status(404).json({ success: false, message: "Exam not found" });
+    const submission = await ExamSubmission.findByPk(req.params.submissionId);
+    if (!submission || submission.exam_id !== exam.id) {
+      return res.status(404).json({ success: false, message: "Submission not found for this exam" });
+    }
+    const answer = await ExamAnswer.findByPk(req.params.answerId);
+    if (!answer || answer.submission_id !== submission.id) {
+      return res.status(404).json({ success: false, message: "Answer not found for this submission" });
+    }
+    const marks = Number(req.body?.marks_obtained);
+    if (!Number.isFinite(marks) || marks < 0) {
+      return res.status(400).json({ success: false, message: "marks_obtained must be a valid non-negative number." });
+    }
+    const questionMarks = Number(answer.question?.marks || 0);
+    if (questionMarks > 0 && marks > questionMarks) {
+      return res.status(400).json({ success: false, message: `marks_obtained cannot exceed question marks (${questionMarks}).` });
+    }
+    await answer.update({ marks_obtained: marks });
+    // Recalculate total score
+    const allAnswers = await ExamAnswer.findAll({
+      where: { submission_id: submission.id },
+      include: [{ model: ExamQuestion, as: "question" }]
+    });
+    const totalObtained = allAnswers.reduce((sum, a) => sum + Number(a.marks_obtained || 0), 0);
+    const totalPossible = allAnswers.reduce((sum, a) => sum + Number(a.question?.marks || 0), 0);
+    let attempt = await ExamAttempt.findOne({
+      where: { exam_id: exam.id, student_id: submission.student_id },
+      order: [["updated_at", "DESC"]],
+    });
+    if (!attempt) {
+      attempt = await ExamAttempt.create({
+        exam_id: exam.id,
+        student_id: submission.student_id,
+        status: "completed",
+        start_time: submission.started_at || submission.created_at || new Date(),
+        end_time: submission.submitted_at || new Date(),
+        submitted_at: submission.submitted_at || new Date(),
+      });
+    }
+    const percentage = totalPossible > 0 ? Number(((totalObtained / totalPossible) * 100).toFixed(2)) : 0;
+    const passMark = Number(exam.passing_marks || 0);
+    const isPassed = totalObtained >= passMark;
+    await attempt.update({
+      total_score: totalObtained,
+      percentage,
+      is_passed: isPassed,
+    });
+    return res.json({ success: true, data: { marks_obtained: marks, total_score: totalObtained, percentage, is_passed: isPassed } });
+  } catch (error) {
+    return handleErr(res, error);
   }
 };
 
@@ -838,12 +987,82 @@ exports.deleteExam = async (req, res) => {
   }
 };
 
+exports.duplicateExam = async (req, res) => {
+  const tx = await sequelize.transaction();
+  try {
+    const source = await Exam.findByPk(req.params.id, {
+      include: [{ model: ExamQuestion, as: "questions" }],
+      transaction: tx,
+    });
+    if (!source) {
+      await tx.rollback();
+      return res.status(404).json({ success: false, message: "Exam not found" });
+    }
+
+    const body = req.body && typeof req.body === "object" ? req.body : {};
+    const titleSuffix = String(body.title_suffix || " (Copy)");
+    const nextTitle = `${String(source.title || "Exam").trim()}${titleSuffix}`.slice(0, 200).trim();
+    const sourceQuestions = Array.isArray(source.questions) ? source.questions : [];
+    if (!sourceQuestions.length) {
+      await tx.rollback();
+      return res.status(400).json({ success: false, message: "Source exam has no questions to duplicate." });
+    }
+
+    const duplicated = await Exam.create(
+      {
+        title: nextTitle || "Exam (Copy)",
+        description: source.description || null,
+        template_id: source.template_id,
+        total_marks: Number(source.total_marks || 0),
+        passing_marks: Number(source.passing_marks || 0),
+        duration_minutes: Number(source.duration_minutes || 60),
+        requires_webcam: Boolean(source.requires_webcam),
+        prevent_tab_switch: Boolean(source.prevent_tab_switch),
+        allow_retake: Boolean(source.allow_retake),
+        max_attempts: Math.max(1, Number(source.max_attempts) || 1),
+        instructions: source.instructions || null,
+        exam_layout_json: normalizeExamLayout(source.exam_layout_json),
+        status: "draft",
+        created_by: req.user?.id || source.created_by || null,
+      },
+      { transaction: tx }
+    );
+
+    await ExamQuestion.bulkCreate(
+      sourceQuestions.map((q, i) => {
+        const normalized = normalizeQuestion(q?.toJSON ? q.toJSON() : q, i);
+        return { ...normalized, exam_id: duplicated.id };
+      }),
+      { transaction: tx }
+    );
+
+    await tx.commit();
+    const created = await Exam.findByPk(duplicated.id, { include: examIncludes });
+    return res.status(201).json({ success: true, data: created });
+  } catch (error) {
+    await tx.rollback();
+    return res.status(400).json({ success: false, message: error.message });
+  }
+};
+
 exports.createExamSubmission = async (req, res) => {
   try {
     const exam = await Exam.findByPk(req.params.id, { include: [{ model: ExamQuestion, as: "questions" }] });
     if (!exam) return res.status(404).json({ success: false, message: "Exam not found" });
     const student = await findStudentByUser(req.user?.id);
     if (!student) return res.status(403).json({ success: false, message: "Student profile not found for this user." });
+
+    const submittedCount = await ExamSubmission.count({
+      where: { exam_id: exam.id, student_id: student.id, status: "submitted" },
+    });
+    const allowRetake = Boolean(exam.allow_retake);
+    const maxAttempts = Math.max(1, Number(exam.max_attempts) || 1);
+    if (!allowRetake && submittedCount >= 1) {
+      return res.status(409).json({ success: false, message: "Exam already submitted. Re-opening is not allowed." });
+    }
+    if (allowRetake && submittedCount >= maxAttempts) {
+      return res.status(409).json({ success: false, message: "Maximum attempts reached for this exam." });
+    }
 
     let submission = await ExamSubmission.findOne({
       where: { exam_id: exam.id, student_id: student.id, status: "draft" },
@@ -868,7 +1087,7 @@ exports.getMyExamSubmission = async (req, res) => {
         { model: ExamAnswer, as: "answers", include: [{ model: ExamQuestion, as: "question" }] },
         { model: Exam, as: "exam", include: examIncludes },
       ],
-      order: [[{ model: ExamAnswer, as: "answers" }, "created_at", "ASC"]],
+      order: [["created_at", "DESC"], [{ model: ExamAnswer, as: "answers" }, "created_at", "ASC"]],
     });
     return res.json({ success: true, data: submission });
   } catch (error) {
@@ -920,14 +1139,24 @@ exports.submitExamSubmission = async (req, res) => {
     if (submission.student_id !== student.id) return res.status(403).json({ success: false, message: "You cannot submit this submission." });
     if (submission.status === "submitted") return res.json({ success: true, data: submission });
 
+    const submitReason = String(req.body?.submit_reason || "manual_submit");
+    const autoSubmitNoAnswerAllowed = new Set([
+      "auto_submit_tab_switch",
+      "auto_submit_warning_limit",
+      "auto_submit_time_elapsed",
+    ]).has(submitReason);
     const requiredQuestions = (submission.exam?.questions || []).filter((q) => q.required);
     const answerMap = new Map((submission.answers || []).map((a) => [a.question_id, a]));
-    for (const rq of requiredQuestions) {
-      const ans = answerMap.get(rq.id);
-      const hasText = Boolean(String(ans?.answer_text || "").trim());
-      const hasJson = ans?.answer_json != null && (Array.isArray(ans.answer_json) ? ans.answer_json.length > 0 : true);
-      if (!hasText && !hasJson) {
-        return res.status(400).json({ success: false, message: `Required question not answered: ${rq.question_text}` });
+    const hasAnyAnsweredQuestion = (submission.answers || []).some((a) => hasMeaningfulAnswer(a));
+    if (!hasAnyAnsweredQuestion && !autoSubmitNoAnswerAllowed) {
+      return res.status(400).json({ success: false, message: "You must answer at least one question before submitting." });
+    }
+    if (!autoSubmitNoAnswerAllowed) {
+      for (const rq of requiredQuestions) {
+        const ans = answerMap.get(rq.id);
+        if (!hasMeaningfulAnswer(ans)) {
+          return res.status(400).json({ success: false, message: `Required question not answered: ${rq.question_text}` });
+        }
       }
     }
 
@@ -942,6 +1171,291 @@ exports.submitExamSubmission = async (req, res) => {
     const updated = await ExamSubmission.findByPk(submission.id, { include: [{ model: ExamAnswer, as: "answers" }] });
     return res.json({ success: true, data: updated });
   } catch (error) {
+    return res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+exports.listExamSubmissionsForMarking = async (req, res) => {
+  try {
+    const exam = await Exam.findByPk(req.params.id, {
+      include: [{ model: ExamQuestion, as: "questions", attributes: ["id", "question_text", "marks", "required", "order_number"] }],
+    });
+    if (!exam) return res.status(404).json({ success: false, message: "Exam not found" });
+
+    const where = { exam_id: exam.id };
+    if (req.query.status && ["draft", "submitted"].includes(String(req.query.status))) where.status = String(req.query.status);
+    const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(100, Math.max(1, Number.parseInt(req.query.limit, 10) || 20));
+    const offset = (page - 1) * limit;
+
+    const { rows: submissions, count } = await ExamSubmission.findAndCountAll({
+      where,
+      distinct: true,
+      limit,
+      offset,
+      include: [
+        {
+          model: Student,
+          as: "student",
+          attributes: ["id", "admission_number", "user_id"],
+          include: [{ model: User, as: "user", ...userSafe }],
+        },
+      ],
+      order: [["created_at", "DESC"]],
+    });
+
+    const total = typeof count === "number" ? count : count?.length || 0;
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    const studentIds = submissions.map((s) => s.student_id).filter(Boolean);
+    const attempts = studentIds.length
+      ? await ExamAttempt.findAll({
+          where: { exam_id: exam.id, student_id: { [Op.in]: studentIds } },
+          attributes: ["id", "student_id", "total_score", "percentage", "is_passed", "status", "updated_at"],
+          order: [["updated_at", "DESC"]],
+        })
+      : [];
+    const attemptByStudent = new Map();
+    for (const a of attempts) {
+      if (!attemptByStudent.has(a.student_id)) attemptByStudent.set(a.student_id, a);
+    }
+
+    const results = studentIds.length
+      ? await StudentExamResult.findAll({
+          where: { exam_id: exam.id, student_id: { [Op.in]: studentIds } },
+          attributes: ["id", "student_id", "grade", "grade_letter", "grade_remarks", "points", "updated_at"],
+        })
+      : [];
+    const resultByStudent = new Map();
+    for (const r of results) {
+      if (!resultByStudent.has(r.student_id)) resultByStudent.set(r.student_id, r);
+    }
+
+    const rows = await Promise.all(submissions.map(async (s) => {
+      const attempt = attemptByStudent.get(s.student_id) || null;
+      const answers = await ExamAnswer.findAll({
+        where: { submission_id: s.id },
+        include: [{ model: ExamQuestion, as: "question", attributes: ["id", "question_text", "marks", "order_number"] }],
+        order: [[{ model: ExamQuestion, as: "question" }, "order_number", "ASC"]],
+      });
+      const uniqueAnswers = answers.filter((a, index, arr) => arr.findIndex(b => b.question_id === a.question_id) === index);
+      return {
+        id: s.id,
+        status: s.status,
+        started_at: s.started_at,
+        submitted_at: s.submitted_at,
+        created_at: s.created_at,
+        student: s.student || null,
+        answers: uniqueAnswers.map((a) => ({
+          id: a.id,
+          question_id: a.question_id,
+          question_text: a.question?.question_text || "Question",
+          question_marks: Number(a.question?.marks || 0),
+          marks_obtained: a.marks_obtained != null ? Number(a.marks_obtained) : null,
+          answer_text: a.answer_text,
+          answer_json: a.answer_json,
+          order_number: Number(a.question?.order_number || 0),
+        })),
+        marking: attempt
+          ? {
+              exam_attempt_id: attempt.id,
+              total_score: attempt.total_score,
+              percentage: attempt.percentage,
+              is_passed: attempt.is_passed,
+              status: attempt.status,
+              updated_at: attempt.updated_at,
+              grade: resultByStudent.get(s.student_id)?.grade || null,
+              grade_letter: resultByStudent.get(s.student_id)?.grade_letter || null,
+              grade_remarks: resultByStudent.get(s.student_id)?.grade_remarks || null,
+              points: resultByStudent.get(s.student_id)?.points || null,
+            }
+          : null,
+      };
+    }));
+
+    return res.json({
+      success: true,
+      data: {
+        exam: {
+          id: exam.id,
+          title: exam.title,
+          total_marks: exam.total_marks,
+          passing_marks: exam.passing_marks,
+        },
+        submissions: rows,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages,
+          hasNextPage: page < totalPages,
+          hasPrevPage: page > 1,
+        },
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.markExamSubmission = async (req, res) => {
+  try {
+    const exam = await Exam.findByPk(req.params.id);
+    if (!exam) return res.status(404).json({ success: false, message: "Exam not found" });
+    const submission = await ExamSubmission.findByPk(req.params.submissionId);
+    if (!submission || submission.exam_id !== exam.id) {
+      return res.status(404).json({ success: false, message: "Submission not found for this exam" });
+    }
+    if (submission.status !== "submitted") {
+      return res.status(400).json({ success: false, message: "Only submitted exams can be marked." });
+    }
+
+
+
+    const score = Number(req.body?.total_score);
+    if (!Number.isFinite(score) || score < 0) {
+      return res.status(400).json({ success: false, message: "total_score must be a valid non-negative number." });
+    }
+    const totalMarks = Math.max(0, Number(exam.total_marks || 0));
+    if (totalMarks > 0 && score > totalMarks) {
+      return res.status(400).json({ success: false, message: `total_score cannot exceed total_marks (${totalMarks}).` });
+    }
+    const percentage = totalMarks > 0 ? Number(((score / totalMarks) * 100).toFixed(2)) : 0;
+    const passMark = Number(exam.passing_marks || 0);
+    const isPassed = score >= passMark;
+
+    let attempt = await ExamAttempt.findOne({
+      where: { exam_id: exam.id, student_id: submission.student_id },
+      order: [["updated_at", "DESC"]],
+    });
+    if (!attempt) {
+      attempt = await ExamAttempt.create({
+        exam_id: exam.id,
+        student_id: submission.student_id,
+        status: "completed",
+        start_time: submission.started_at || submission.created_at || new Date(),
+        end_time: submission.submitted_at || new Date(),
+        submitted_at: submission.submitted_at || new Date(),
+      });
+    }
+    await attempt.update({
+      total_score: score,
+      percentage,
+      is_passed: isPassed,
+      status: "completed",
+      submitted_at: submission.submitted_at || new Date(),
+      end_time: submission.submitted_at || new Date(),
+    });
+
+    return res.json({
+      success: true,
+      data: {
+        submission_id: submission.id,
+        exam_attempt_id: attempt.id,
+        total_score: attempt.total_score,
+        percentage: attempt.percentage,
+        is_passed: attempt.is_passed,
+      },
+    });
+  } catch (error) {
+    return res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+exports.markExamAnswer = async (req, res) => {
+  try {
+    const exam = await Exam.findByPk(req.params.id);
+    if (!exam) return res.status(404).json({ success: false, message: "Exam not found" });
+    const submission = await ExamSubmission.findByPk(req.params.submissionId);
+    if (!submission || submission.exam_id !== exam.id) {
+      return res.status(404).json({ success: false, message: "Submission not found for this exam" });
+    }
+    const answer = await ExamAnswer.findByPk(req.params.answerId);
+    if (!answer || answer.submission_id !== submission.id) {
+      return res.status(404).json({ success: false, message: "Answer not found for this submission" });
+    }
+
+
+
+    const marksObtained = Number(req.body?.marks_obtained);
+    if (!Number.isFinite(marksObtained) || marksObtained < 0) {
+      return res.status(400).json({ success: false, message: "marks_obtained must be a valid non-negative number." });
+    }
+    const questionMarks = Number(answer.question?.marks || 0);
+    if (questionMarks > 0 && marksObtained > questionMarks) {
+      return res.status(400).json({ success: false, message: `marks_obtained cannot exceed question marks (${questionMarks}).` });
+    }
+
+    await answer.update({ marks_obtained: marksObtained });
+
+    return res.json({
+      success: true,
+      data: {
+        answer_id: answer.id,
+        marks_obtained: answer.marks_obtained,
+      },
+    });
+  } catch (error) {
+    return res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+exports.cleanupExamStaleDraftSubmissions = async (req, res) => {
+  const tx = await sequelize.transaction();
+  try {
+    const exam = await Exam.findByPk(req.params.id, { transaction: tx });
+    if (!exam) {
+      await tx.rollback();
+      return res.status(404).json({ success: false, message: "Exam not found" });
+    }
+
+    const submittedRows = await ExamSubmission.findAll({
+      where: { exam_id: exam.id, status: "submitted" },
+      attributes: ["student_id"],
+      transaction: tx,
+    });
+    const studentIds = [...new Set(submittedRows.map((r) => r.student_id).filter(Boolean))];
+    if (!studentIds.length) {
+      await tx.commit();
+      return res.json({
+        success: true,
+        data: { exam_id: exam.id, draft_submissions_deleted: 0, draft_answers_deleted: 0 },
+      });
+    }
+
+    const staleDrafts = await ExamSubmission.findAll({
+      where: { exam_id: exam.id, status: "draft", student_id: { [Op.in]: studentIds } },
+      attributes: ["id"],
+      transaction: tx,
+    });
+    const staleDraftIds = staleDrafts.map((d) => d.id);
+    if (!staleDraftIds.length) {
+      await tx.commit();
+      return res.json({
+        success: true,
+        data: { exam_id: exam.id, draft_submissions_deleted: 0, draft_answers_deleted: 0 },
+      });
+    }
+
+    const draftAnswersDeleted = await ExamAnswer.destroy({
+      where: { submission_id: { [Op.in]: staleDraftIds } },
+      transaction: tx,
+    });
+    const draftSubmissionsDeleted = await ExamSubmission.destroy({
+      where: { id: { [Op.in]: staleDraftIds } },
+      transaction: tx,
+    });
+
+    await tx.commit();
+    return res.json({
+      success: true,
+      data: {
+        exam_id: exam.id,
+        draft_submissions_deleted: draftSubmissionsDeleted,
+        draft_answers_deleted: draftAnswersDeleted,
+      },
+    });
+  } catch (error) {
+    await tx.rollback();
     return res.status(400).json({ success: false, message: error.message });
   }
 };

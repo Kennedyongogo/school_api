@@ -16,12 +16,22 @@ module.exports = (sequelize) => {
       },
       exam_attempt_id: {
         type: DataTypes.UUID,
-        allowNull: false,
+        allowNull: true,
         references: { model: "exam_attempts", key: "id" },
+      },
+      exam_id: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        references: { model: "exams", key: "id" },
+      },
+      curriculum_subject_id: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        references: { model: "curriculum_subjects", key: "id" },
       },
       subject_id: {
         type: DataTypes.UUID,
-        allowNull: false,
+        allowNull: true,
         references: { model: "subjects", key: "id" },
       },
       exam_type_id: {
@@ -36,11 +46,15 @@ module.exports = (sequelize) => {
       },
       marks_obtained: {
         type: DataTypes.DECIMAL(5, 2),
-        allowNull: false,
+        allowNull: true,
+      },
+      marks: {
+        type: DataTypes.DECIMAL(6, 2),
+        allowNull: true,
       },
       total_marks: {
         type: DataTypes.DECIMAL(5, 2),
-        allowNull: false,
+        allowNull: true,
       },
       percentage: {
         type: DataTypes.DECIMAL(5, 2),
@@ -50,8 +64,29 @@ module.exports = (sequelize) => {
         type: DataTypes.STRING(5),
         allowNull: true,
       },
+      grade: {
+        type: DataTypes.STRING(20),
+        allowNull: true,
+      },
+      grade_remarks: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
+      graded_at: {
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
+      graded_by: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        references: { model: "users", key: "id" },
+      },
       gpa_earned: {
         type: DataTypes.DECIMAL(3, 2),
+        allowNull: true,
+      },
+      points: {
+        type: DataTypes.DECIMAL(6, 2),
         allowNull: true,
       },
       is_best_attempt: {
@@ -63,7 +98,14 @@ module.exports = (sequelize) => {
       tableName: "student_exam_results",
       timestamps: true,
       underscored: true,
-      indexes: [{ unique: true, fields: ["exam_attempt_id"] }],
+      indexes: [
+        { unique: true, fields: ["exam_attempt_id"], name: "student_exam_results_attempt_unique" },
+        {
+          unique: true,
+          fields: ["student_id", "exam_id", "curriculum_subject_id"],
+          name: "student_exam_results_student_exam_subject_unique",
+        },
+      ],
     }
   );
 
