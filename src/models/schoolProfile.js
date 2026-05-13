@@ -12,7 +12,7 @@ module.exports = (sequelize) => {
       name: {
         type: DataTypes.STRING(200),
         allowNull: false,
-        defaultValue: "Carlvyne International School",
+        defaultValue: "Elimu Plus",
       },
       short_name: {
         type: DataTypes.STRING(50),

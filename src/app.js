@@ -77,6 +77,7 @@ const admissionSettingsRoutes = require("./routes/admissionSettingsRoutes");
 const platformModulesRoutes = require("./routes/platformModulesRoutes");
 const schoolProfileRoutes = require("./routes/schoolProfileRoutes");
 const schoolPortalRoutes = require("./routes/schoolPortalRoutes");
+const publicRoutes = require("./routes/publicRoutes");
 
 const app = express();
 
@@ -327,6 +328,8 @@ app.use("/api/school-profile", schoolProfileRoutes);
 console.log("✅ /api/school-profile route registered");
 app.use("/api/school-portal", schoolPortalRoutes);
 console.log("✅ /api/school-portal route registered");
+app.use("/api/public", publicRoutes);
+console.log("✅ /api/public route registered");
 
 // Forgot password endpoint
 app.post("/api/auth/forgot", async (req, res) => {

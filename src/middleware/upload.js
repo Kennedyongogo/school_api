@@ -71,6 +71,12 @@ const storage = multer.diskStorage({
     } else if (file.fieldname === "school_logo") {
       uploadPath = path.join(__dirname, "..", "..", "uploads", "school-logos");
     } else if (
+      file.fieldname === "student_picture" ||
+      file.fieldname === "student_reportcard" ||
+      file.fieldname === "student_birthcertificate"
+    ) {
+      uploadPath = path.join(__dirname, "..", "..", "uploads", "admission-documents");
+    } else if (
       file.fieldname === "listing_image" ||
       file.fieldname === "listing_images"
     ) {
@@ -238,8 +244,14 @@ const uploadSchoolLogos = upload.single("school_logo");
 
 const uploadTeacherProfilePicture = upload.single("teacher_profile_picture");
 const uploadStudentProfilePicture = upload.single("student_profile_picture");
+const uploadSchoolAdminProfilePicture = upload.single("profile_picture");
 
-// Middleware for marketplace listing image
+const uploadAdmissionDocuments = upload.fields([
+  { name: "student_picture", maxCount: 1 },
+  { name: "student_reportcard", maxCount: 1 },
+  { name: "student_birthcertificate", maxCount: 1 },
+]);
+
 const uploadListingImage = upload.single("listing_image");
 
 // Middleware for menu item image
@@ -342,10 +354,12 @@ module.exports = {
   uploadSchoolLogos,
   uploadTeacherProfilePicture,
   uploadStudentProfilePicture,
+  uploadSchoolAdminProfilePicture,
+  uploadAdmissionDocuments,
   uploadListingImage,
   uploadMenuImage,
   handleUploadError,
   deleteFile,
   getFileType,
-  upload, // Export base upload object as well for flexibility
+  upload,
 };

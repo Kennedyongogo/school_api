@@ -43,6 +43,18 @@ exports.listPublicActive = async (req, res) => {
   }
 };
 
+exports.listAllPublic = async (req, res) => {
+  try {
+    const curricula = await Curriculum.findAll({
+      order: [["name", "ASC"]],
+      attributes: ["id", "name", "type", "description", "period"],
+    });
+    return res.json({ success: true, data: curricula });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 exports.listCurricula = async (req, res) => {
   try {
     const where = {};
@@ -76,6 +88,32 @@ exports.getCurriculum = async (req, res) => {
   try {
     const row = await Curriculum.findByPk(req.params.id);
     if (!row) return res.status(404).json({ success: false, message: "Not found" });
+
+    if (req.query.include === "classes") {
+      const curriculumId = row.id;
+      const classes = await CurriculumClass.findAll({
+        where: { curriculum_id: curriculumId },
+        include: [
+          {
+            model: CurriculumClassLevel,
+            as: "curriculum_class_levels",
+            required: false,
+            order: [
+              ["level_order", "ASC"],
+              ["name", "ASC"],
+            ],
+          },
+        ],
+        order: [["name", "ASC"]],
+      });
+      return res.json({
+        success: true,
+        data: {
+          ...row.toJSON(),
+          curriculum_classes: classes,
+        },
+      });
+    }
 
     if (req.query.include === "structure") {
       const curriculumId = row.id;
@@ -234,5 +272,69 @@ exports.deleteCurriculum = async (req, res) => {
     return res.json({ success: true, message: "Deleted" });
   } catch (error) {
     return res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+exports.listPublicCurriculumClasses = async (req, res) => {
+  try {
+    const curriculumId = req.params.curriculumId;
+    const classes = await CurriculumClass.findAll({
+      where: { curriculum_id: curriculumId, is_active: true },
+      order: [["name", "ASC"]],
+      attributes: ["id", "name", "code", "description", "period"],
+    });
+    return res.json({ success: true, data: classes });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.listPublicCurriculumClassLevels = async (req, res) => {
+  try {
+    const levels = await CurriculumClassLevel.findAll({
+      where: { curriculum_class_id: req.params.classId },
+      order: [
+        ["level_order", "ASC"],
+        ["name", "ASC"],
+      ],
+      attributes: ["id", "name", "level_order", "description"],
+    });
+    return res.json({ success: true, data: levels });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.publicGetCurriculum = async (req, res) => {
+  try {
+    const row = await Curriculum.findByPk(req.params.id);
+    if (!row) return res.status(404).json({ success: false, message: "Not found" });
+
+    const curriculumId = row.id;
+    const classes = await CurriculumClass.findAll({
+      where: { curriculum_id: curriculumId },
+      include: [
+        {
+          model: CurriculumClassLevel,
+          as: "curriculum_class_levels",
+          required: false,
+          order: [
+            ["level_order", "ASC"],
+            ["name", "ASC"],
+          ],
+        },
+      ],
+      order: [["name", "ASC"]],
+    });
+
+    return res.json({
+      success: true,
+      data: {
+        ...row.toJSON(),
+        curriculum_classes: classes,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
   }
 };

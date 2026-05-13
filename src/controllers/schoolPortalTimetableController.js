@@ -14,8 +14,11 @@ const {
   Exam,
   ExamAttempt,
   ExamSubmission,
+  ExamAnswer,
+  ExamQuestion,
+  StudentExamResult,
 } = require("../models");
-const { Op } = require("sequelize");
+const { Op, Sequelize } = require("sequelize");
 
 const userSafe = { attributes: { exclude: ["password_hash"] } };
 
@@ -247,6 +250,91 @@ exports.listMyStudentExamSchedules = async (req, res) => {
     return res.json({ success: true, data });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message || "Could not load exams." });
+  }
+};
+
+exports.getMyStudentExamResult = async (req, res) => {
+  try {
+    const examScheduleId = req.params.examScheduleId;
+    if (!examScheduleId) {
+      return res.status(400).json({ success: false, message: "examScheduleId is required." });
+    }
+
+    const student = await Student.findOne({
+      where: { user_id: req.user?.id },
+      attributes: ["id", "curriculum_id", "curriculum_class_id"],
+    });
+    if (!student) {
+      return res.status(404).json({ success: false, message: "Student profile not found." });
+    }
+
+    const examSchedule = await ExamSchedule.findByPk(examScheduleId, {
+      include: [
+        {
+          model: Exam,
+          as: "exam",
+          required: true,
+          attributes: ["id", "title"],
+        },
+      ],
+    });
+    if (!examSchedule) {
+      return res.status(404).json({ success: false, message: "Exam schedule not found." });
+    }
+
+    // Find the StudentExamResult for this exam and student
+    const result = await StudentExamResult.findOne({
+      where: { exam_id: examSchedule.exam_id, student_id: student.id },
+      include: [
+        {
+          model: CurriculumSubject,
+          as: "curriculum_subject",
+          attributes: ["id", "name"],
+        },
+      ],
+    });
+    if (!result) {
+      return res.status(404).json({ success: false, message: "Exam result not found. The exam may not have been graded yet." });
+    }
+
+    // Find the submission to get answers
+    const submission = await ExamSubmission.findOne({
+      where: { exam_id: examSchedule.exam_id, student_id: student.id, status: "submitted" },
+    });
+
+    let questions = [];
+    if (submission) {
+      // Get answers with marks
+      const answers = await ExamAnswer.findAll({
+        where: { submission_id: submission.id },
+        include: [
+          {
+            model: ExamQuestion,
+            as: "question",
+            required: true,
+            attributes: ["id", "question_text", "marks"],
+          },
+        ],
+        order: [["created_at", "ASC"]],
+      });
+
+      questions = answers.map((a) => ({
+        question: a.question.question_text,
+        score: Number(a.marks_obtained || 0),
+        maxScore: Number(a.question.marks || 0),
+      }));
+    }
+
+    const data = {
+      totalScore: Number(result.marks_obtained || 0),
+      totalMax: 100, // Assuming max is 100, or could calculate from questions
+      grade: result.grade,
+      questions,
+    };
+
+    return res.json({ success: true, data });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message || "Could not load exam result." });
   }
 };
 

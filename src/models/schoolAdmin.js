@@ -15,11 +15,6 @@ module.exports = (sequelize) => {
         allowNull: false,
         references: { model: "users", key: "id" },
       },
-      employee_number: {
-        type: DataTypes.STRING(20),
-        unique: true,
-        allowNull: false,
-      },
       admin_type: {
         type: DataTypes.ENUM(
           "super_admin",
@@ -31,17 +26,9 @@ module.exports = (sequelize) => {
         ),
         allowNull: false,
       },
-      permissions: {
-        type: DataTypes.JSONB,
-        defaultValue: {},
-      },
-      department: {
-        type: DataTypes.STRING(50),
+      profile_picture: {
+        type: DataTypes.STRING(500),
         allowNull: true,
-      },
-      joining_date: {
-        type: DataTypes.DATEONLY,
-        defaultValue: DataTypes.NOW,
       },
     },
     {

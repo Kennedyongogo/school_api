@@ -604,3 +604,16 @@ exports.deleteTeacher = async (req, res) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
+
+exports.publicListTeachers = async (req, res) => {
+  try {
+    const teachers = await Teacher.findAll({
+      include: teacherProfileIncludes,
+      order: [["created_at", "DESC"]],
+    });
+    return res.json({ success: true, data: teachers });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+

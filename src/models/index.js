@@ -343,7 +343,7 @@ const initializeModels = async () => {
     await News.sync({ force: false, alter: false });
     await SchoolEvent.sync({ force: false, alter: false });
     await EventRegistration.sync({ force: false, alter: false });
-    await AdmissionApplication.sync({ force: false, alter: false });
+    await AdmissionApplication.sync({ force: true, alter: false });
     await AdmissionSettings.sync({ force: false, alter: false });
 
     await PaymentGateway.sync({ force: false, alter: false });
@@ -1712,15 +1712,6 @@ const setupAssociations = () => {
       as: "parent",
     });
 
-    User.hasMany(AdmissionApplication, {
-      foreignKey: "processed_by",
-      as: "processed_admissions",
-    });
-    AdmissionApplication.belongsTo(User, {
-      foreignKey: "processed_by",
-      as: "processor",
-    });
-
     AcademicYear.hasMany(AdmissionSettings, {
       foreignKey: "academic_year_id",
       as: "admission_settings",
@@ -1730,16 +1721,7 @@ const setupAssociations = () => {
       as: "academic_year",
     });
 
-    AcademicYear.hasMany(AdmissionApplication, {
-      foreignKey: "academic_year_id",
-      as: "admission_applications",
-    });
-    AdmissionApplication.belongsTo(AcademicYear, {
-      foreignKey: "academic_year_id",
-      as: "academic_year",
-    });
-
-    SchoolProfile.belongsTo(AcademicYear, {
+    AcademicYear.belongsTo(AcademicTerm, {
       foreignKey: "current_academic_year_id",
       as: "current_academic_year",
     });

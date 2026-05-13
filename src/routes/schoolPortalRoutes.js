@@ -14,6 +14,7 @@ const {
 const {
   listMyStudentTimetableLessons,
   listMyStudentExamSchedules,
+  getMyStudentExamResult,
 } = require("../controllers/schoolPortalTimetableController");
 const { authorizeRoles } = require("../middleware/auth");
 
@@ -25,6 +26,7 @@ router.post("/live-session/join", authenticateUser, authorizeRoles(["student"]),
 router.post("/live-session/leave", authenticateUser, authorizeRoles(["student"]), recordLiveSessionLeave);
 router.get("/student/timetable-lessons", authenticateUser, authorizeRoles(["student"]), listMyStudentTimetableLessons);
 router.get("/student/exam-schedules", authenticateUser, authorizeRoles(["student"]), listMyStudentExamSchedules);
+router.get("/student/exam-results/:examScheduleId", authenticateUser, authorizeRoles(["student"]), getMyStudentExamResult);
 
 router.use(errorHandler);
 

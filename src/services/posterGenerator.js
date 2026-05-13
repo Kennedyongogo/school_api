@@ -25,7 +25,7 @@ class PosterGenerator {
         ? "festive and energetic"
         : "clean and authoritative";
 
-    return `Create a professional ${categoryHints.label} poster for Carlvyne International School:
+    return `Create a professional ${categoryHints.label} poster for Elimu Plus:
 
 EVENT/NEWS: ${description}
 
@@ -38,7 +38,7 @@ DESIGN REQUIREMENTS:
 
 FORMAT: High quality, ${tone} design, leave space for text overlay.
 
-SCHOOL: Carlvyne International School - Excellence in Education`;
+SCHOOL: Elimu Plus - Excellence in Education`;
   }
 
   getColorHints(palette) {

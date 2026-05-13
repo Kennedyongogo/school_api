@@ -198,3 +198,20 @@ exports.deleteFeeStructure = async (req, res) => {
     return res.status(400).json({ success: false, message: error.message });
   }
 };
+
+exports.listFeeStructuresByCurriculum = async (req, res) => {
+  try {
+    const { curriculum_id } = req.params;
+    const rows = await FeeStructure.findAll({
+      where: { curriculum_id },
+      include: [
+        { model: CurriculumClass, as: "curriculum_class", attributes: ["id", "name", "code"] },
+        { model: CurriculumClassLevel, as: "curriculum_class_level", attributes: ["id", "name", "level_order"] },
+      ],
+      order: [["created_at", "DESC"]],
+    });
+    return res.json({ success: true, data: rows });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};

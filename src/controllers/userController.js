@@ -3,7 +3,7 @@ const jwt = require("jsonwebtoken");
 const ExcelJS = require("exceljs");
 const XLSX = require("xlsx");
 const { QueryTypes } = require("sequelize");
-const { User, Teacher, sequelize } = require("../models");
+const { User, Teacher, SchoolAdmin, sequelize } = require("../models");
 const config = require("../config/config");
 const {
   SUPER_ADMIN_ROLE,
@@ -431,14 +431,23 @@ exports.me = async (req, res) => {
           attributes: ["profile_picture"],
           required: false,
         },
+        {
+          model: SchoolAdmin,
+          as: "school_admin_profile",
+          attributes: ["profile_picture"],
+          required: false,
+        },
       ],
     });
     const userData = user.get({ plain: true });
-    // If teacher, use teacher's profile_picture, else use user's profile_image
+    // If teacher, use teacher's profile_picture, else if school admin use school admin's profile_picture, else use user's profile_image
     if (userData.teacher_profile?.profile_picture) {
       userData.profile_image = userData.teacher_profile.profile_picture;
+    } else if (userData.school_admin_profile?.profile_picture) {
+      userData.profile_image = userData.school_admin_profile.profile_picture;
     }
     delete userData.teacher_profile;
+    delete userData.school_admin_profile;
     console.log("User data sent to client:", userData);
     return res.json({ success: true, data: userData });
   } catch (error) {

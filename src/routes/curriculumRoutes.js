@@ -2,11 +2,15 @@ const express = require("express");
 const router = express.Router();
 const {
   listPublicActive,
+  listAllPublic,
+  listPublicCurriculumClasses,
+  listPublicCurriculumClassLevels,
   listCurricula,
   getCurriculum,
   createCurriculum,
   updateCurriculum,
   deleteCurriculum,
+  publicGetCurriculum,
 } = require("../controllers/curriculumController");
 const {
   listTimetableLessonsByDate,
@@ -68,6 +72,9 @@ const { STAFF_ROLES, ADMIN_PORTAL_API_ROLES } = require("../constants/userRoles"
 const TEACH_OR_STAFF = [...STAFF_ROLES, "teacher"];
 
 router.get("/public/active", listPublicActive);
+router.get("/public/all", listAllPublic);
+router.get("/public/:curriculumId/classes", listPublicCurriculumClasses);
+router.get("/public/:curriculumId/classes/:classId/levels", listPublicCurriculumClassLevels);
 
 router.get("/", authenticateUser, authorizeRoles(TEACH_OR_STAFF), listCurricula);
 router.post("/", authenticateUser, authorizeRoles(ADMIN_PORTAL_API_ROLES), createCurriculum);
