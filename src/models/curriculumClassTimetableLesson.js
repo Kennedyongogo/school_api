@@ -68,6 +68,13 @@ module.exports = (sequelize) => {
         defaultValue: "physical",
         validate: { isIn: [["physical", "online"]] },
       },
+      /** For online lessons: optional = join without auto camera/mic; audio | video = auto-enable on join. */
+      media_mode: {
+        type: DataTypes.STRING(16),
+        allowNull: false,
+        defaultValue: "optional",
+        validate: { isIn: [["optional", "audio", "video"]] },
+      },
       teacher_attended: {
         type: DataTypes.BOOLEAN,
         allowNull: false,

@@ -111,6 +111,13 @@ function normalizeDeliveryMode(raw) {
   return "physical";
 }
 
+/** optional = no auto camera/mic; audio = mic on join; video = mic + camera on join. */
+function normalizeMediaMode(raw) {
+  const s = raw == null ? "" : String(raw).trim().toLowerCase();
+  if (s === "audio" || s === "video") return s;
+  return "optional";
+}
+
 function intervalsOverlap(aStart, aEnd, bStart, bEnd) {
   const as = timeToSeconds(aStart);
   const ae = timeToSeconds(aEnd);
@@ -668,6 +675,7 @@ exports.createTimetableLesson = async (req, res) => {
       notes,
       teacher_attended,
       delivery_mode,
+      media_mode,
     } = req.body;
 
     if (!lesson_date || typeof lesson_date !== "string") {
@@ -741,6 +749,10 @@ exports.createTimetableLesson = async (req, res) => {
       notes: notes ?? null,
       teacher_attended: teacher_attended !== undefined ? !!teacher_attended : false,
       delivery_mode: normalizeDeliveryMode(delivery_mode),
+      media_mode:
+        normalizeDeliveryMode(delivery_mode) === "online"
+          ? normalizeMediaMode(media_mode)
+          : "optional",
     });
 
     const created = await CurriculumClassTimetableLesson.findByPk(row.id, { include: lessonInclude });
@@ -799,6 +811,11 @@ exports.updateTimetableLesson = async (req, res) => {
     if (req.body.notes !== undefined) patch.notes = req.body.notes;
     if (req.body.teacher_attended !== undefined) patch.teacher_attended = !!req.body.teacher_attended;
     if (req.body.delivery_mode !== undefined) patch.delivery_mode = normalizeDeliveryMode(req.body.delivery_mode);
+    if (req.body.media_mode !== undefined) patch.media_mode = normalizeMediaMode(req.body.media_mode);
+    if (patch.delivery_mode === "physical") patch.media_mode = "optional";
+    else if (patch.delivery_mode === "online" && req.body.media_mode === undefined && lesson.media_mode == null) {
+      patch.media_mode = "optional";
+    }
 
     const overlapDate = patch.lesson_date ?? lesson.lesson_date;
     const overlapStart = patch.starts_at !== undefined ? patch.starts_at : lesson.starts_at;

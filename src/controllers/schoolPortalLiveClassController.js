@@ -36,7 +36,7 @@ exports.getLiveClassRoom = async (req, res) => {
           model: CurriculumClassTimetableLesson,
           as: "timetable_lesson",
           required: false,
-          attributes: ["id", "lesson_date", "starts_at", "ends_at"],
+          attributes: ["id", "lesson_date", "starts_at", "ends_at", "delivery_mode", "media_mode"],
           include: [
             {
               model: CurriculumClassTimetable,
@@ -97,6 +97,10 @@ exports.getLiveClassRoom = async (req, res) => {
         ice_servers: isInAppVideoPlatform(live.platform) && live.platform !== "livekit" ? webrtcRoomService.getIceServers() : [],
         livekit_url: live.platform === "livekit" && liveKitConfigured() ? getLiveKitUrl() : null,
         video_mode: live.platform === "livekit" ? "livekit" : isInAppVideoPlatform(live.platform) ? "webrtc" : "external",
+        media_mode:
+          live.timetable_lesson?.delivery_mode === "online"
+            ? String(live.timetable_lesson?.media_mode || "optional").toLowerCase()
+            : "optional",
         role,
         join_path: webrtcRoomService.portalLiveClassPath(live.id),
       },
