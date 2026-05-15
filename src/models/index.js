@@ -83,6 +83,8 @@ const CurriculumClassTimetableLesson =
   require("./curriculumClassTimetableLesson")(sequelize);
 const Program = require("./program")(sequelize);
 const News = require("./news")(sequelize);
+const SchoolService = require("./schoolService")(sequelize);
+const PortalReview = require("./portalReview")(sequelize);
 const SchoolEvent = require("./schoolEvent")(sequelize);
 const EventRegistration = require("./eventRegistration")(sequelize);
 const AdmissionApplication = require("./admissionApplication")(sequelize);
@@ -219,6 +221,8 @@ const models = {
   CurriculumClassTimetableLesson,
   Program,
   News,
+  SchoolService,
+  PortalReview,
   SchoolEvent,
   EventRegistration,
   AdmissionApplication,
@@ -347,6 +351,8 @@ const initializeModels = async () => {
     await CurriculumClassTimetableLesson.sync({ force: false, alter: false });
     await Program.sync({ force: false, alter: false });
     await News.sync({ force: false, alter: false });
+    await SchoolService.sync({ force: false, alter: true });
+    await PortalReview.sync({ force: false, alter: false });
     await SchoolEvent.sync({ force: false, alter: false });
     await EventRegistration.sync({ force: false, alter: false });
     await AdmissionApplication.sync({ force: false, alter: true });
@@ -1687,6 +1693,14 @@ const setupAssociations = () => {
 
     User.hasMany(News, { foreignKey: "published_by", as: "published_news" });
     News.belongsTo(User, { foreignKey: "published_by", as: "publisher" });
+
+    User.hasOne(PortalReview, { foreignKey: "user_id", as: "portal_review" });
+    PortalReview.belongsTo(User, { foreignKey: "user_id", as: "user" });
+    PortalReview.belongsTo(User, { foreignKey: "reviewed_by", as: "reviewer" });
+    Student.hasOne(PortalReview, { foreignKey: "student_id", as: "portal_review" });
+    PortalReview.belongsTo(Student, { foreignKey: "student_id", as: "student" });
+    Parent.hasOne(PortalReview, { foreignKey: "parent_id", as: "portal_review" });
+    PortalReview.belongsTo(Parent, { foreignKey: "parent_id", as: "parent" });
 
     User.hasMany(SchoolEvent, {
       foreignKey: "created_by",
