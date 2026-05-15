@@ -45,6 +45,7 @@ const overallGradingScaleRoutes = require("./routes/overallGradingScaleRoutes");
 const examResultsRoutes = require("./routes/examResultsRoutes");
 const reportCardRoutes = require("./routes/reportCardRoutes");
 const realTimeTrackingRoutes = require("./routes/realTimeTrackingRoutes");
+const realtimeRoutes = require("./routes/realtimeRoutes");
 const attendanceTrackingRoutes = require("./routes/attendanceTrackingRoutes");
 const examSessionLogRoutes = require("./routes/examSessionLogRoutes");
 const syllabusRoutes = require("./routes/syllabusRoutes");
@@ -107,6 +108,7 @@ const postersUploadPath = path.join(__dirname, "..", "uploads", "posters");
 const schoolLogosUploadPath = path.join(__dirname, "..", "uploads", "school-logos");
 const teacherProfilesUploadPath = path.join(__dirname, "..", "uploads", "teacher-profiles");
 const studentProfilesUploadPath = path.join(__dirname, "..", "uploads", "student-profiles");
+const admissionDocumentsUploadPath = path.join(__dirname, "..", "uploads", "admission-documents");
 
 console.log("📁 Upload Paths:");
 console.log(
@@ -164,6 +166,12 @@ console.log(
   fs.existsSync(studentProfilesUploadPath)
 );
 console.log(
+  "  - Admission documents:",
+  admissionDocumentsUploadPath,
+  "- Exists:",
+  fs.existsSync(admissionDocumentsUploadPath)
+);
+console.log(
   "  - Services:",
   servicesUploadPath,
   "- Exists:",
@@ -190,6 +198,7 @@ app.use("/uploads/posters", express.static(postersUploadPath));
 app.use("/uploads/school-logos", express.static(schoolLogosUploadPath));
 app.use("/uploads/teacher-profiles", cors(), express.static(teacherProfilesUploadPath));
 app.use("/uploads/student-profiles", cors(), express.static(studentProfilesUploadPath));
+app.use("/uploads/admission-documents", cors(), express.static(admissionDocumentsUploadPath));
 
 // API routes
 console.log("🔗 Registering API routes...");
@@ -264,6 +273,8 @@ app.use("/api/report-cards", reportCardRoutes);
 console.log("✅ /api/report-cards route registered");
 app.use("/api/real-time", realTimeTrackingRoutes);
 console.log("✅ /api/real-time route registered");
+app.use("/api/realtime", realtimeRoutes);
+console.log("✅ /api/realtime route registered");
 app.use("/api/attendance-tracking", attendanceTrackingRoutes);
 console.log("✅ /api/attendance-tracking route registered");
 app.use("/api/exam-session-logs", examSessionLogRoutes);
@@ -459,6 +470,7 @@ const createUploadDirectories = () => {
     path.join(__dirname, "..", "uploads", "school-logos"),
     path.join(__dirname, "..", "uploads", "teacher-profiles"),
     path.join(__dirname, "..", "uploads", "student-profiles"),
+    path.join(__dirname, "..", "uploads", "admission-documents"),
   ];
 
   uploadDirs.forEach((dir) => {

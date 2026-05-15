@@ -380,6 +380,7 @@ exports.getHrAttendanceOverview = async (req, res) => {
         date_filtered: hasDateFilter,
         teacher_attendance: teacherRows.map((r) => ({
           lesson_id: r.id,
+          lesson_date: r.lesson_date,
           curriculum: r.timetable?.curriculum_class?.curriculum || null,
           curriculum_class: r.timetable?.curriculum_class || null,
           subject: r.curriculum_subject || null,

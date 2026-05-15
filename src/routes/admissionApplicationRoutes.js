@@ -20,7 +20,7 @@ router.post("/upload", uploadAdmissionDocuments, handleUploadError, uploadDocume
 
 router.get("/", authenticateUser, authorizeRoles(TEACH_OR_STAFF), listApplications);
 router.get("/:id", authenticateUser, authorizeRoles(TEACH_OR_STAFF), getApplication);
-router.put("/:id", authenticateUser, authorizeRoles(ADMIN_PORTAL_API_ROLES), updateApplication);
+router.put("/:id", authenticateUser, authorizeRoles(TEACH_OR_STAFF), updateApplication);
 router.delete("/:id", authenticateUser, authorizeRoles(ADMIN_PORTAL_API_ROLES), deleteApplication);
 
 router.use(errorHandler);

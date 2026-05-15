@@ -21,6 +21,7 @@ const {
 const { Op, Sequelize } = require("sequelize");
 
 const userSafe = { attributes: { exclude: ["password_hash"] } };
+const { getLessonJoinWindow } = require("../utils/lessonJoinWindow");
 
 exports.listMyStudentTimetableLessons = async (req, res) => {
   try {
@@ -67,7 +68,7 @@ exports.listMyStudentTimetableLessons = async (req, res) => {
           separate: true,
           limit: 1,
           order: [["created_at", "DESC"]],
-          attributes: ["id", "join_url", "host_url", "session_status", "platform", "created_at"],
+          attributes: ["id", "meeting_id", "join_url", "host_url", "session_status", "platform", "created_at"],
           include: [
             {
               model: LiveClassAttendance,
@@ -96,6 +97,15 @@ exports.listMyStudentTimetableLessons = async (req, res) => {
         : l.delivery_mode === "online"
         ? "Pending"
         : "Pending";
+      const joinWindow =
+        live && String(l.delivery_mode || "").toLowerCase() === "online"
+          ? getLessonJoinWindow({
+              lesson_date: l.lesson_date,
+              starts_at: l.starts_at,
+              ends_at: l.ends_at,
+              session_status: live.session_status,
+            })
+          : { can_join: false, reason: null };
       return {
         id: l.id,
         lesson_date: l.lesson_date,
@@ -119,10 +129,15 @@ exports.listMyStudentTimetableLessons = async (req, res) => {
         live_session: live
           ? {
               id: live.id,
+              meeting_id: live.meeting_id,
               join_url: live.join_url,
               session_status: live.session_status,
               platform: live.platform,
               created_at: live.created_at,
+              can_join: joinWindow.can_join,
+              join_blocked_reason: joinWindow.reason,
+              join_opens_at: joinWindow.opens_at,
+              join_closes_at: joinWindow.closes_at,
             }
           : null,
       };

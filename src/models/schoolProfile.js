@@ -121,11 +121,6 @@ module.exports = (sequelize) => {
         defaultValue: "#E53E3E",
         comment: "Hex color code",
       },
-      current_academic_year_id: {
-        type: DataTypes.UUID,
-        allowNull: true,
-        references: { model: "academic_years", key: "id" },
-      },
       current_term_id: {
         type: DataTypes.UUID,
         allowNull: true,

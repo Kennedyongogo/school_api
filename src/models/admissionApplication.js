@@ -1,4 +1,8 @@
 const { DataTypes } = require("sequelize");
+const {
+  ADMISSION_STATUSES,
+  DEFAULT_ADMISSION_STATUS,
+} = require("../constants/admissionStatuses");
 
 module.exports = (sequelize) => {
   const AdmissionApplication = sequelize.define(
@@ -8,6 +12,16 @@ module.exports = (sequelize) => {
         type: DataTypes.UUID,
         primaryKey: true,
         defaultValue: DataTypes.UUIDV4,
+      },
+      application_number: {
+        type: DataTypes.STRING(20),
+        allowNull: true,
+        unique: true,
+      },
+      status: {
+        type: DataTypes.ENUM(...ADMISSION_STATUSES),
+        allowNull: false,
+        defaultValue: DEFAULT_ADMISSION_STATUS,
       },
       curriculum_level: {
         type: DataTypes.STRING(50),

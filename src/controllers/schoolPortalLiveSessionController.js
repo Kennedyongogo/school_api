@@ -5,7 +5,10 @@ const {
   LiveClassAttendance,
   CurriculumClassTimetableLesson,
   CurriculumClassTimetable,
+  CurriculumSubject,
 } = require("../models");
+const { assertStudentCanJoinLessonWindow } = require("../utils/lessonJoinWindow");
+const { loadLiveClassForAccess, assertStudentCanAccessLiveClass } = require("../services/liveClassAudience");
 
 /** Match student join URL to stored row (strip #fragments and trailing slashes). */
 function normalizeJoinUrlForMatch(raw) {
@@ -15,9 +18,19 @@ function normalizeJoinUrlForMatch(raw) {
   return noHash.replace(/\/+$/, "");
 }
 
+async function findLiveClassById(liveClassId) {
+  if (!liveClassId) return null;
+  return loadLiveClassForAccess(liveClassId);
+}
+
 async function findLiveClassForJoin(joinUrlRaw) {
   const key = normalizeJoinUrlForMatch(joinUrlRaw);
   if (!key) return null;
+
+  const liveClassIdMatch = key.match(/\/live-class\/([0-9a-f-]{36})/i);
+  if (liveClassIdMatch) {
+    return findLiveClassById(liveClassIdMatch[1]);
+  }
 
   const candidates = await LiveClass.findAll({
     where: {
@@ -51,12 +64,37 @@ async function findLiveClassForJoin(joinUrlRaw) {
   return null;
 }
 
-/** Student-only: records join for roster when opening the meeting link from the portal. */
+async function resolveLiveClassFromBody(body) {
+  const live_class_id = body?.live_class_id != null ? String(body.live_class_id).trim() : "";
+  if (live_class_id) {
+    return findLiveClassById(live_class_id);
+  }
+  const join_url = body?.join_url != null ? String(body.join_url).trim() : "";
+  if (join_url) {
+    return findLiveClassForJoin(join_url);
+  }
+  return null;
+}
+
+async function assertStudentCanJoinLive(student, live, userId) {
+  if (!live) {
+    const err = new Error("No active live lesson matches this session.");
+    err.statusCode = 404;
+    throw err;
+  }
+  await assertStudentCanAccessLiveClass(student, live, { userId });
+}
+
+/** Student-only: records join for roster when entering the live class room. */
 exports.recordLiveSessionJoin = async (req, res) => {
   try {
+    const live_class_id = req.body?.live_class_id != null ? String(req.body.live_class_id).trim() : "";
     const join_url = req.body?.join_url != null ? String(req.body.join_url).trim() : "";
-    if (!join_url) {
-      return res.status(400).json({ success: false, message: "join_url is required" });
+    if (!live_class_id && !join_url) {
+      return res.status(400).json({
+        success: false,
+        message: "live_class_id or join_url is required",
+      });
     }
 
     const student = await Student.findOne({
@@ -66,26 +104,17 @@ exports.recordLiveSessionJoin = async (req, res) => {
     if (!student) {
       return res.status(404).json({ success: false, message: "Student profile not found" });
     }
-    if (!student.curriculum_class_id) {
-      return res.status(403).json({
-        success: false,
-        message: "Your profile has no class placement; attendance cannot be recorded.",
-      });
-    }
 
-    const live = await findLiveClassForJoin(join_url);
-    if (!live) {
-      return res.status(404).json({
-        success: false,
-        message: "No active live lesson matches this link.",
-      });
-    }
+    const live = await resolveLiveClassFromBody(req.body);
+    await assertStudentCanJoinLive(student, live, req.user.id);
 
-    const classId = live.timetable_lesson?.timetable?.curriculum_class_id;
-    if (!classId || String(student.curriculum_class_id) !== String(classId)) {
-      return res.status(403).json({
-        success: false,
-        message: "This online class is not for your registered class.",
+    const lesson = live.timetable_lesson;
+    if (lesson) {
+      assertStudentCanJoinLessonWindow({
+        lesson_date: lesson.lesson_date,
+        starts_at: lesson.starts_at,
+        ends_at: lesson.ends_at,
+        session_status: live.session_status,
       });
     }
 
@@ -113,6 +142,10 @@ exports.recordLiveSessionJoin = async (req, res) => {
       await row.reload();
     }
 
+    if (live.session_status === "scheduled") {
+      await live.update({ session_status: "live" });
+    }
+
     return res.json({
       success: true,
       data: {
@@ -122,16 +155,21 @@ exports.recordLiveSessionJoin = async (req, res) => {
       },
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    const code = error.statusCode || 500;
+    return res.status(code).json({ success: false, message: error.message });
   }
 };
 
-/** Optional: student marks leaving (tab close unreliable — explicit button later). */
+/** Student marks leaving the live class room. */
 exports.recordLiveSessionLeave = async (req, res) => {
   try {
+    const live_class_id = req.body?.live_class_id != null ? String(req.body.live_class_id).trim() : "";
     const join_url = req.body?.join_url != null ? String(req.body.join_url).trim() : "";
-    if (!join_url) {
-      return res.status(400).json({ success: false, message: "join_url is required" });
+    if (!live_class_id && !join_url) {
+      return res.status(400).json({
+        success: false,
+        message: "live_class_id or join_url is required",
+      });
     }
 
     const student = await Student.findOne({
@@ -142,19 +180,8 @@ exports.recordLiveSessionLeave = async (req, res) => {
       return res.status(404).json({ success: false, message: "Student profile not found" });
     }
 
-    const live = await findLiveClassForJoin(join_url);
-    if (!live) {
-      return res.status(404).json({ success: false, message: "No live lesson matches this link." });
-    }
-
-    const classIdLeave = live.timetable_lesson?.timetable?.curriculum_class_id;
-    if (
-      !student.curriculum_class_id ||
-      !classIdLeave ||
-      String(student.curriculum_class_id) !== String(classIdLeave)
-    ) {
-      return res.status(403).json({ success: false, message: "This session is not for your class." });
-    }
+    const live = await resolveLiveClassFromBody(req.body);
+    await assertStudentCanJoinLive(student, live, req.user.id);
 
     const row = await LiveClassAttendance.findOne({
       where: { live_class_id: live.id, student_id: student.id },
@@ -175,6 +202,7 @@ exports.recordLiveSessionLeave = async (req, res) => {
 
     return res.json({ success: true, data: row });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    const code = error.statusCode || 500;
+    return res.status(code).json({ success: false, message: error.message });
   }
 };

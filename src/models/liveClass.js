@@ -26,7 +26,7 @@ module.exports = (sequelize) => {
         validate: { isIn: [["scheduled", "live", "ended", "cancelled"]] },
       },
       platform: {
-        type: DataTypes.ENUM("zoom", "google_meet", "teams", "jitsi", "other"),
+        type: DataTypes.ENUM("zoom", "google_meet", "teams", "jitsi", "webrtc", "livekit", "other"),
         allowNull: false,
         defaultValue: "other",
       },

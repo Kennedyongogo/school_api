@@ -91,6 +91,9 @@ const LiveClass = require("./liveClass")(sequelize);
 const LiveClassRecording = require("./liveClassRecording")(sequelize);
 const LiveClassAttendance = require("./liveClassAttendance")(sequelize);
 const LiveClassChat = require("./liveClassChat")(sequelize);
+const LiveClassHandRaise = require("./liveClassHandRaise")(sequelize);
+const LiveClassReaction = require("./liveClassReaction")(sequelize);
+const LiveClassLobbyEntry = require("./liveClassLobbyEntry")(sequelize);
 const LiveClassPoll = require("./liveClassPoll")(sequelize);
 const LiveClassPollResponse = require("./liveClassPollResponse")(sequelize);
 const Course = require("./course")(sequelize);
@@ -224,6 +227,9 @@ const models = {
   LiveClassRecording,
   LiveClassAttendance,
   LiveClassChat,
+  LiveClassHandRaise,
+  LiveClassReaction,
+  LiveClassLobbyEntry,
   LiveClassPoll,
   LiveClassPollResponse,
   Course,
@@ -343,7 +349,7 @@ const initializeModels = async () => {
     await News.sync({ force: false, alter: false });
     await SchoolEvent.sync({ force: false, alter: false });
     await EventRegistration.sync({ force: false, alter: false });
-    await AdmissionApplication.sync({ force: true, alter: false });
+    await AdmissionApplication.sync({ force: false, alter: true });
     await AdmissionSettings.sync({ force: false, alter: false });
 
     await PaymentGateway.sync({ force: false, alter: false });
@@ -406,6 +412,9 @@ const initializeModels = async () => {
     await LiveClassRecording.sync({ force: false, alter: false });
     await LiveClassAttendance.sync({ force: false, alter: false });
     await LiveClassChat.sync({ force: false, alter: false });
+    await LiveClassHandRaise.sync({ force: false, alter: false });
+    await LiveClassReaction.sync({ force: false, alter: false });
+    await LiveClassLobbyEntry.sync({ force: false, alter: false });
     await LiveClassPoll.sync({ force: false, alter: false });
     await LiveClassPollResponse.sync({ force: false, alter: false });
 
@@ -1721,10 +1730,6 @@ const setupAssociations = () => {
       as: "academic_year",
     });
 
-    AcademicYear.belongsTo(AcademicTerm, {
-      foreignKey: "current_academic_year_id",
-      as: "current_academic_year",
-    });
     SchoolProfile.belongsTo(AcademicTerm, {
       foreignKey: "current_term_id",
       as: "current_term",
@@ -2142,6 +2147,51 @@ const setupAssociations = () => {
       as: "live_class_chat_messages",
     });
     LiveClassChat.belongsTo(User, { foreignKey: "user_id", as: "author" });
+    LiveClassChat.belongsTo(LiveClassChat, { foreignKey: "parent_id", as: "parent" });
+    LiveClassChat.hasMany(LiveClassChat, { foreignKey: "parent_id", as: "replies" });
+
+    LiveClass.hasMany(LiveClassHandRaise, {
+      foreignKey: "live_class_id",
+      as: "hand_raises",
+    });
+    LiveClassHandRaise.belongsTo(LiveClass, {
+      foreignKey: "live_class_id",
+      as: "live_class",
+    });
+    LiveClassHandRaise.belongsTo(User, { foreignKey: "user_id", as: "user" });
+    User.hasMany(LiveClassHandRaise, {
+      foreignKey: "user_id",
+      as: "live_class_hand_raises",
+    });
+
+    LiveClass.hasMany(LiveClassReaction, {
+      foreignKey: "live_class_id",
+      as: "reactions",
+    });
+    LiveClassReaction.belongsTo(LiveClass, {
+      foreignKey: "live_class_id",
+      as: "live_class",
+    });
+    LiveClassReaction.belongsTo(User, { foreignKey: "user_id", as: "user" });
+    User.hasMany(LiveClassReaction, {
+      foreignKey: "user_id",
+      as: "live_class_reactions",
+    });
+
+    LiveClass.hasMany(LiveClassLobbyEntry, {
+      foreignKey: "live_class_id",
+      as: "lobby_entries",
+    });
+    LiveClassLobbyEntry.belongsTo(LiveClass, {
+      foreignKey: "live_class_id",
+      as: "live_class",
+    });
+    LiveClassLobbyEntry.belongsTo(User, { foreignKey: "user_id", as: "user" });
+    LiveClassLobbyEntry.belongsTo(Student, { foreignKey: "student_id", as: "student" });
+    LiveClassLobbyEntry.belongsTo(User, { foreignKey: "admitted_by", as: "admitted_by_user" });
+    LiveClassLobbyEntry.belongsTo(User, { foreignKey: "denied_by", as: "denied_by_user" });
+    User.hasMany(LiveClassLobbyEntry, { foreignKey: "user_id", as: "live_class_lobby_entries" });
+    Student.hasMany(LiveClassLobbyEntry, { foreignKey: "student_id", as: "live_class_lobby_entries" });
 
     LiveClass.hasMany(LiveClassPoll, {
       foreignKey: "live_class_id",

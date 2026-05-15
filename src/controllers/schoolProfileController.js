@@ -1,6 +1,5 @@
 const {
   SchoolProfile,
-  AcademicYear,
   AcademicTerm,
 } = require("../models");
 
@@ -56,7 +55,6 @@ const ADMIN_WRITABLE_FIELDS = [
   "youtube_url",
   "favicon_url",
   "banner_url",
-  "current_academic_year_id",
   "current_term_id",
   "grading_system",
   "terms_per_year",
@@ -109,10 +107,7 @@ exports.getFullSchoolSettings = async (req, res) => {
   try {
     const school = await SchoolProfile.findOne({
       attributes: { exclude: ADMIN_RESPONSE_EXCLUDE },
-      include: [
-        { model: AcademicYear, as: "current_academic_year", required: false },
-        { model: AcademicTerm, as: "current_term", required: false },
-      ],
+      include: [{ model: AcademicTerm, as: "current_term", required: false }],
     });
     return res.json({ success: true, data: school });
   } catch (error) {
@@ -157,10 +152,7 @@ exports.updateSchoolProfile = async (req, res) => {
       });
       const full = await SchoolProfile.findByPk(school.id, {
         attributes: { exclude: ADMIN_RESPONSE_EXCLUDE },
-        include: [
-          { model: AcademicYear, as: "current_academic_year", required: false },
-          { model: AcademicTerm, as: "current_term", required: false },
-        ],
+        include: [{ model: AcademicTerm, as: "current_term", required: false }],
       });
       return res.status(201).json({ success: true, data: full });
     }
@@ -168,10 +160,7 @@ exports.updateSchoolProfile = async (req, res) => {
     await school.update(updateData);
     const refreshed = await SchoolProfile.findByPk(school.id, {
       attributes: { exclude: ADMIN_RESPONSE_EXCLUDE },
-      include: [
-        { model: AcademicYear, as: "current_academic_year", required: false },
-        { model: AcademicTerm, as: "current_term", required: false },
-      ],
+      include: [{ model: AcademicTerm, as: "current_term", required: false }],
     });
     return res.json({ success: true, data: refreshed });
   } catch (error) {

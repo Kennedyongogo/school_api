@@ -19,6 +19,8 @@ const {
 } = require("../models");
 const { STAFF_ROLES } = require("../constants/userRoles");
 const meetingProvider = require("../services/meetingProvider");
+const webrtcRoomService = require("../services/webrtcRoomService");
+const { isInAppVideoPlatform, defaultOnlineMeetingMode } = require("../utils/meetingPlatform");
 
 const userSafe = { attributes: { exclude: ["password_hash"] } };
 
@@ -282,10 +284,23 @@ function normalizeMeetingPlatform(raw) {
   if (s === "google_meet" || s === "googlemeet" || s === "meet") return "google_meet";
   if (s === "teams" || s === "microsoft_teams") return "teams";
   if (s === "jitsi") return "jitsi";
+  if (s === "webrtc") return "webrtc";
+  if (s === "livekit") return "livekit";
   return "other";
 }
 
+/** Default online lesson meetings: LiveKit SFU (or webrtc mesh). Set ONLINE_MEETING_PLATFORM=jitsi for Jitsi. */
 async function tryProvisionMeetingForLesson(lesson) {
+  const mode = defaultOnlineMeetingMode();
+  if (mode === "webrtc" || mode === "livekit") {
+    const p = webrtcRoomService.provisionForLesson(lesson.id, mode);
+    return {
+      meeting_id: p.meeting_id,
+      join_url: "",
+      host_url: "",
+      platform: p.platform,
+    };
+  }
   if (process.env.JITSI_DISABLED === "1") {
     return null;
   }
@@ -317,6 +332,15 @@ function resolveMeetingUrls(body, provisionPayload) {
       join_url: provisionPayload.join_url,
       host_url: provisionPayload.host_url,
       meeting_id: provisionPayload.meeting_id || null,
+      platform: normalizeMeetingPlatform(provisionPayload.platform),
+    };
+  }
+
+  if (isInAppVideoPlatform(provisionPayload?.platform) && provisionPayload?.meeting_id) {
+    return {
+      join_url: provisionPayload.join_url || "",
+      host_url: provisionPayload.host_url || "",
+      meeting_id: provisionPayload.meeting_id,
       platform: normalizeMeetingPlatform(provisionPayload.platform),
     };
   }
@@ -895,11 +919,27 @@ exports.initiateTimetableLessonLiveSession = async (req, res) => {
         where: {
           curriculum_class_timetable_lesson_id: lesson.id,
           session_status: { [Op.in]: ["scheduled", "live"] },
-          join_url: { [Op.ne]: null },
+          [Op.or]: [
+            { join_url: { [Op.ne]: null } },
+            { platform: { [Op.in]: ["webrtc", "livekit"] }, meeting_id: { [Op.ne]: null } },
+          ],
         },
         order: [["created_at", "DESC"]],
       });
-      if (reusable && String(reusable.join_url).trim() !== "") {
+      const reusableReady =
+        reusable &&
+        (String(reusable.join_url || "").trim() !== "" ||
+          (isInAppVideoPlatform(reusable.platform) && String(reusable.meeting_id || "").trim() !== ""));
+      if (reusableReady) {
+        if (isInAppVideoPlatform(reusable.platform) && !String(reusable.join_url || "").trim()) {
+          const linkUrls = webrtcRoomService.urlsForLiveClassRow(reusable.id);
+          await reusable.update({
+            join_url: linkUrls.join_url,
+            host_url: linkUrls.host_url,
+            session_status: "live",
+          });
+          await reusable.reload();
+        }
         // Teacher has actively opened/initiated this online lesson session.
         if (!lesson.teacher_attended) {
           await lesson.update({ teacher_attended: true });
@@ -917,11 +957,12 @@ exports.initiateTimetableLessonLiveSession = async (req, res) => {
 
     const provisionPayload = await tryProvisionMeetingForLesson(lesson);
     const urls = resolveMeetingUrls(body, provisionPayload);
-    if (!urls.join_url || String(urls.join_url).trim() === "") {
+    const isInApp = isInAppVideoPlatform(urls.platform || provisionPayload?.platform);
+    if (!isInApp && (!urls.join_url || String(urls.join_url).trim() === "")) {
       return res.status(400).json({
         success: false,
         message:
-          "No meeting join URL available. Jitsi is used by default (remove JITSI_DISABLED if you disabled it). Otherwise set ONLINE_MEETING_DEFAULT_JOIN_URL (and optionally ONLINE_MEETING_DEFAULT_HOST_URL), or send join_url (and optionally host_url) in the request body.",
+          "No meeting join URL available. Set ONLINE_MEETING_PLATFORM=livekit or webrtc for in-app rooms, or provide join_url in the request body.",
       });
     }
 
@@ -939,22 +980,45 @@ exports.initiateTimetableLessonLiveSession = async (req, res) => {
       class_session_id: null,
       curriculum_class_timetable_lesson_id: lesson.id,
       meeting_id: meetingRef,
-      platform: urls.platform || "other",
+      platform: urls.platform || provisionPayload?.platform || "other",
       teacher_id: teacherId,
       start_time: window.start_time,
       end_time: window.end_time,
-      join_url: urls.join_url,
-      host_url: urls.host_url || urls.join_url,
-      session_status: "scheduled",
+      join_url: isInApp ? "" : urls.join_url,
+      host_url: isInApp ? "" : urls.host_url || urls.join_url,
+      session_status: isInApp ? "live" : "scheduled",
       attendance_count: 0,
     });
+
+    if (isInApp) {
+      const linkUrls = webrtcRoomService.urlsForLiveClassRow(row.id);
+      await row.update({
+        join_url: linkUrls.join_url,
+        host_url: linkUrls.host_url,
+        session_status: "live",
+      });
+    }
 
     // Auto-mark teacher attendance once the teacher successfully initiates the lesson session.
     if (!lesson.teacher_attended) {
       await lesson.update({ teacher_attended: true });
     }
 
-    const live_class = await LiveClass.findByPk(row.id);
+    const live_class = await LiveClass.findByPk(row.id, {
+      attributes: [
+        "id",
+        "meeting_id",
+        "join_url",
+        "host_url",
+        "platform",
+        "session_status",
+        "start_time",
+        "end_time",
+        "teacher_id",
+        "curriculum_class_timetable_lesson_id",
+        "created_at",
+      ],
+    });
     return res.status(201).json({
       success: true,
       data: {
@@ -991,19 +1055,24 @@ exports.notifyOnlineLessonClass = async (req, res) => {
       where: {
         curriculum_class_timetable_lesson_id: lesson.id,
         session_status: { [Op.in]: ["scheduled", "live"] },
-        join_url: { [Op.ne]: null },
+        [Op.or]: [
+          { join_url: { [Op.ne]: null } },
+          { platform: { [Op.in]: ["webrtc", "livekit"] }, meeting_id: { [Op.ne]: null } },
+        ],
       },
       order: [["created_at", "DESC"]],
     });
-    const joinUrl =
+    let joinUrl =
       (live?.join_url && String(live.join_url).trim()) ||
       (body.join_url != null && String(body.join_url).trim()) ||
       "";
+    if (!joinUrl && isInAppVideoPlatform(live?.platform) && live?.id) {
+      joinUrl = webrtcRoomService.portalLiveClassUrl(live.id);
+    }
     if (!joinUrl) {
       return res.status(400).json({
         success: false,
-        message:
-          "No join URL yet. Prepare meeting links first (Initiate / open links), or include join_url in the request body.",
+        message: "No join URL yet. Prepare the online lesson first (Initiate), or include join_url in the request body.",
       });
     }
 

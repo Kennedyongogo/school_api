@@ -1,4 +1,6 @@
 const { Server } = require("socket.io");
+const { socketAuthMiddleware } = require("../middleware/socketAuth");
+const signalingService = require("../services/signalingService");
 
 let io;
 
@@ -11,32 +13,8 @@ function attachSocket(httpServer, options = {}) {
     transports: ["websocket", "polling"],
   });
 
-  io.on("connection", (socket) => {
-    socket.on("join:proctor", (examAttemptId) => {
-      if (!examAttemptId) return;
-      socket.join(`proctor:${examAttemptId}`);
-    });
-
-    socket.on("leave:proctor", (examAttemptId) => {
-      if (!examAttemptId) return;
-      socket.leave(`proctor:${examAttemptId}`);
-    });
-
-    socket.on("join:live-class", (liveClassId) => {
-      if (!liveClassId) return;
-      socket.join(`live:${liveClassId}`);
-    });
-
-    socket.on("leave:live-class", (liveClassId) => {
-      if (!liveClassId) return;
-      socket.leave(`live:${liveClassId}`);
-    });
-
-    socket.on("join:presence", (sectionId) => {
-      if (!sectionId) return;
-      socket.join(`presence:${sectionId}`);
-    });
-  });
+  io.use(socketAuthMiddleware);
+  signalingService.initialize(io);
 
   return io;
 }
