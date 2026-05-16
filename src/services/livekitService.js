@@ -1,4 +1,5 @@
-const { AccessToken } = require("livekit-server-sdk");
+const { AccessToken, RoomServiceClient } = require("livekit-server-sdk");
+const { PUBLIC_PORTAL_ALLOWED_ROLES } = require("../constants/userRoles");
 
 function getLiveKitUrl() {
   return (
@@ -49,8 +50,65 @@ async function createParticipantToken({ roomName, identity, name, role = "studen
   return { token, url: getLiveKitUrl() };
 }
 
+/** HTTP base URL for RoomServiceClient (not WebSocket). */
+function getLiveKitApiUrl() {
+  let url = getLiveKitUrl();
+  if (!url) return "";
+  if (url.startsWith("wss://")) return url.replace("wss://", "https://");
+  if (url.startsWith("ws://")) return url.replace("ws://", "http://");
+  if (!url.startsWith("http")) return `https://${url}`;
+  return url;
+}
+
+function getRoomServiceClient() {
+  const host = getLiveKitApiUrl();
+  if (!host || !process.env.LIVEKIT_API_KEY || !process.env.LIVEKIT_API_SECRET) {
+    return null;
+  }
+  return new RoomServiceClient(host, process.env.LIVEKIT_API_KEY, process.env.LIVEKIT_API_SECRET);
+}
+
+/**
+ * Disconnect parents/students from a LiveKit room (staff remain connected).
+ * @returns {Promise<{ removed: number }>}
+ */
+async function removePublicParticipantsFromRoom(roomName) {
+  if (!isConfigured() || !roomName) return { removed: 0 };
+
+  const client = getRoomServiceClient();
+  if (!client) return { removed: 0 };
+
+  const { User } = require("../models");
+  let participants = [];
+  try {
+    participants = await client.listParticipants(String(roomName));
+  } catch (err) {
+    if (/not found|404|does not exist/i.test(String(err?.message || err))) {
+      return { removed: 0 };
+    }
+    throw err;
+  }
+
+  let removed = 0;
+  for (const participant of participants) {
+    const identity = participant?.identity;
+    if (!identity) continue;
+    const user = await User.findByPk(identity, { attributes: ["id", "role"] });
+    if (!user || !PUBLIC_PORTAL_ALLOWED_ROLES.includes(user.role)) continue;
+    try {
+      await client.removeParticipant(String(roomName), String(identity));
+      removed += 1;
+    } catch (_) {
+      /* participant may have already left */
+    }
+  }
+  return { removed };
+}
+
 module.exports = {
   getLiveKitUrl,
+  getLiveKitApiUrl,
   isConfigured,
   createParticipantToken,
+  removePublicParticipantsFromRoom,
 };

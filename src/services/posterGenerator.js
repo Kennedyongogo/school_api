@@ -2,10 +2,24 @@ const axios = require("axios");
 const fs = require("fs").promises;
 const path = require("path");
 const crypto = require("crypto");
+const FormData = require("form-data");
 
 class PosterGenerator {
   constructor() {
-    this.apiUrl = process.env.POSTER_IMAGE_API_URL || "https://image.pollinations.ai/prompt";
+    this.stabilityEndpoint =
+      process.env.STABILITY_POSTER_ENDPOINT ||
+      "https://api.stability.ai/v2beta/stable-image/generate/core";
+    this.pollinationsUrl =
+      process.env.POSTER_IMAGE_API_URL || "https://image.pollinations.ai/prompt";
+    this.timeoutMs = Number(process.env.POSTER_GENERATION_TIMEOUT_MS) || 120000;
+  }
+
+  getStabilityApiKey() {
+    return String(process.env.STABILITY_API_KEY || "").trim();
+  }
+
+  usesStability() {
+    return Boolean(this.getStabilityApiKey());
   }
 
   mapNewsCategory(category) {
@@ -94,29 +108,98 @@ SCHOOL: Elimu Plus - Excellence in Education`;
     return hints[category] || hints.news;
   }
 
-  async generatePoster(description, posterCategory, colorPaletteKey, kind = "news") {
-    const enhancedPrompt = this.buildPrompt(description, posterCategory, colorPaletteKey);
-    const requestUrl = `${this.apiUrl}/${encodeURIComponent(enhancedPrompt)}?width=1024&height=1024&model=flux`;
+  parseStabilityError(error) {
+    const data = error?.response?.data;
+    if (!data) return error.message || "Stability AI request failed";
 
-    const response = await axios.get(requestUrl, {
+    try {
+      const text = Buffer.isBuffer(data) ? data.toString("utf8") : String(data);
+      const json = JSON.parse(text);
+      if (Array.isArray(json.errors) && json.errors.length) {
+        return json.errors.map((e) => e.message || e).join("; ");
+      }
+      return json.message || json.name || text;
+    } catch {
+      return error.message || "Stability AI request failed";
+    }
+  }
+
+  async fetchImageFromStability(prompt) {
+    const form = new FormData();
+    form.append("prompt", prompt);
+    form.append("output_format", process.env.STABILITY_POSTER_OUTPUT_FORMAT || "png");
+    form.append("aspect_ratio", process.env.STABILITY_POSTER_ASPECT_RATIO || "1:1");
+
+    const negativePrompt = process.env.STABILITY_POSTER_NEGATIVE_PROMPT;
+    if (negativePrompt) {
+      form.append("negative_prompt", negativePrompt);
+    }
+
+    const response = await axios.post(this.stabilityEndpoint, form, {
+      headers: {
+        ...form.getHeaders(),
+        Authorization: `Bearer ${this.getStabilityApiKey()}`,
+        Accept: "image/*",
+      },
       responseType: "arraybuffer",
-      timeout: Number(process.env.POSTER_GENERATION_TIMEOUT_MS) || 120000,
+      timeout: this.timeoutMs,
+      maxContentLength: Infinity,
+      maxBodyLength: Infinity,
     });
 
+    if (!response.data || response.data.byteLength === 0) {
+      throw new Error("Stability AI returned an empty image");
+    }
+
+    return Buffer.from(response.data);
+  }
+
+  async fetchImageFromPollinations(prompt) {
+    const requestUrl = `${this.pollinationsUrl}/${encodeURIComponent(prompt)}?width=1024&height=1024&model=flux`;
+    const response = await axios.get(requestUrl, {
+      responseType: "arraybuffer",
+      timeout: this.timeoutMs,
+    });
+    return Buffer.from(response.data);
+  }
+
+  async fetchImageBuffer(prompt) {
+    if (this.usesStability()) {
+      try {
+        const buffer = await this.fetchImageFromStability(prompt);
+        return { buffer, provider: "stability", model: "stable-image-core" };
+      } catch (error) {
+        const message = this.parseStabilityError(error);
+        throw new Error(`Stability AI poster generation failed: ${message}`);
+      }
+    }
+
+    const buffer = await this.fetchImageFromPollinations(prompt);
+    return { buffer, provider: "pollinations", model: "flux" };
+  }
+
+  async savePosterImage(buffer, kind) {
     const subfolder = kind === "event" ? "events" : "news";
     const uploadRoot = path.join(__dirname, "..", "..", "uploads", "posters", subfolder);
     await fs.mkdir(uploadRoot, { recursive: true });
     const filename = `${crypto.randomUUID()}.png`;
     const filepath = path.join(uploadRoot, filename);
-    await fs.writeFile(filepath, Buffer.from(response.data));
+    await fs.writeFile(filepath, buffer);
+    return `/uploads/posters/${subfolder}/${filename}`;
+  }
 
-    const imageUrl = `/uploads/posters/${subfolder}/${filename}`;
+  async generatePoster(description, posterCategory, colorPaletteKey, kind = "news") {
+    const enhancedPrompt = this.buildPrompt(description, posterCategory, colorPaletteKey);
+    const { buffer, provider, model } = await this.fetchImageBuffer(enhancedPrompt);
+    const imageUrl = await this.savePosterImage(buffer, kind);
+
     return {
       success: true,
       imageUrl,
       prompt: enhancedPrompt,
       metadata: {
-        model: "flux",
+        provider,
+        model,
         size: "1024x1024",
         timestamp: new Date().toISOString(),
       },

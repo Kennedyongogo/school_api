@@ -125,6 +125,14 @@ class SignalingService {
         if (!liveClassId) return;
         socket.leave(`live:${liveClassId}`);
       });
+      socket.on("join:event", (eventId) => {
+        if (!eventId) return;
+        socket.join(`event:${eventId}`);
+      });
+      socket.on("leave:event", (eventId) => {
+        if (!eventId) return;
+        socket.leave(`event:${eventId}`);
+      });
       if (socket.user?.id) {
         socket.join(`user:${socket.user.id}`);
       }

@@ -37,10 +37,6 @@ module.exports = (sequelize) => {
         ),
         defaultValue: "general",
       },
-      featured_image: {
-        type: DataTypes.STRING(500),
-        allowNull: true,
-      },
       poster_image: {
         type: DataTypes.STRING(500),
         allowNull: true,

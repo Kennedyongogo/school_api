@@ -86,7 +86,10 @@ const News = require("./news")(sequelize);
 const SchoolService = require("./schoolService")(sequelize);
 const PortalReview = require("./portalReview")(sequelize);
 const SchoolEvent = require("./schoolEvent")(sequelize);
-const EventRegistration = require("./eventRegistration")(sequelize);
+const EventLobbyEntry = require("./eventLobbyEntry")(sequelize);
+const EventLiveChat = require("./eventLiveChat")(sequelize);
+const EventLiveReaction = require("./eventLiveReaction")(sequelize);
+const EventLiveHandRaise = require("./eventLiveHandRaise")(sequelize);
 const AdmissionApplication = require("./admissionApplication")(sequelize);
 const AdmissionSettings = require("./admissionSettings")(sequelize);
 const LiveClass = require("./liveClass")(sequelize);
@@ -224,7 +227,10 @@ const models = {
   SchoolService,
   PortalReview,
   SchoolEvent,
-  EventRegistration,
+  EventLobbyEntry,
+  EventLiveChat,
+  EventLiveReaction,
+  EventLiveHandRaise,
   AdmissionApplication,
   AdmissionSettings,
   LiveClass,
@@ -349,12 +355,15 @@ const initializeModels = async () => {
     await TeacherTeachingCurriculumClass.sync({ force: false, alter: false });
     await CurriculumClassTimetable.sync({ force: false, alter: false });
     await CurriculumClassTimetableLesson.sync({ force: false, alter: false });
-    await Program.sync({ force: false, alter: false });
+    await Program.sync({ force: false, alter: true });
     await News.sync({ force: false, alter: false });
     await SchoolService.sync({ force: false, alter: true });
     await PortalReview.sync({ force: false, alter: false });
-    await SchoolEvent.sync({ force: false, alter: false });
-    await EventRegistration.sync({ force: false, alter: false });
+    await SchoolEvent.sync({ force: false, alter: true });
+    await EventLobbyEntry.sync({ force: false, alter: true });
+    await EventLiveChat.sync({ force: false, alter: false });
+    await EventLiveReaction.sync({ force: false, alter: false });
+    await EventLiveHandRaise.sync({ force: false, alter: true });
     await AdmissionApplication.sync({ force: false, alter: true });
     await AdmissionSettings.sync({ force: false, alter: false });
 
@@ -1708,32 +1717,28 @@ const setupAssociations = () => {
     });
     SchoolEvent.belongsTo(User, { foreignKey: "created_by", as: "creator" });
 
-    SchoolEvent.hasMany(EventRegistration, {
-      foreignKey: "event_id",
-      as: "registrations",
-    });
-    EventRegistration.belongsTo(SchoolEvent, {
-      foreignKey: "event_id",
-      as: "event",
-    });
+    SchoolEvent.hasMany(EventLobbyEntry, { foreignKey: "event_id", as: "lobby_entries" });
+    EventLobbyEntry.belongsTo(SchoolEvent, { foreignKey: "event_id", as: "event" });
+    EventLobbyEntry.belongsTo(User, { foreignKey: "user_id", as: "user" });
+    EventLobbyEntry.belongsTo(Student, { foreignKey: "student_id", as: "student" });
+    EventLobbyEntry.belongsTo(Parent, { foreignKey: "parent_id", as: "parent" });
+    EventLobbyEntry.belongsTo(User, { foreignKey: "admitted_by", as: "admitted_by_user" });
+    EventLobbyEntry.belongsTo(User, { foreignKey: "denied_by", as: "denied_by_user" });
 
-    Student.hasMany(EventRegistration, {
-      foreignKey: "student_id",
-      as: "event_registrations",
-    });
-    EventRegistration.belongsTo(Student, {
-      foreignKey: "student_id",
-      as: "student",
-    });
+    SchoolEvent.hasMany(EventLiveChat, { foreignKey: "event_id", as: "live_chats" });
+    EventLiveChat.belongsTo(SchoolEvent, { foreignKey: "event_id", as: "event" });
+    EventLiveChat.belongsTo(User, { foreignKey: "user_id", as: "author" });
+    EventLiveChat.belongsTo(EventLiveChat, { foreignKey: "parent_id", as: "parent" });
+    EventLiveChat.hasMany(EventLiveChat, { foreignKey: "parent_id", as: "replies" });
 
-    Parent.hasMany(EventRegistration, {
-      foreignKey: "parent_id",
-      as: "event_registrations",
-    });
-    EventRegistration.belongsTo(Parent, {
-      foreignKey: "parent_id",
-      as: "parent",
-    });
+    SchoolEvent.hasMany(EventLiveReaction, { foreignKey: "event_id", as: "live_reactions" });
+    EventLiveReaction.belongsTo(SchoolEvent, { foreignKey: "event_id", as: "event" });
+    EventLiveReaction.belongsTo(User, { foreignKey: "user_id", as: "user" });
+
+    SchoolEvent.hasMany(EventLiveHandRaise, { foreignKey: "event_id", as: "hand_raises" });
+    EventLiveHandRaise.belongsTo(SchoolEvent, { foreignKey: "event_id", as: "event" });
+    EventLiveHandRaise.belongsTo(User, { foreignKey: "user_id", as: "user" });
+    EventLiveHandRaise.belongsTo(User, { foreignKey: "dismissed_by", as: "dismissed_by_user" });
 
     AcademicYear.hasMany(AdmissionSettings, {
       foreignKey: "academic_year_id",

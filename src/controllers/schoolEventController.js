@@ -2,6 +2,8 @@ const { Op } = require("sequelize");
 const { SchoolEvent } = require("../models");
 const PosterGenerator = require("../services/posterGenerator");
 const { slugify, ensureUniqueSlug } = require("../utils/slugify");
+const { parsePagination } = require("../utils/pagination");
+const { isOnlineDelivery, provisionLiveFields } = require("../services/eventLiveProvision");
 
 exports.listPublished = async (req, res) => {
   try {
@@ -47,17 +49,40 @@ exports.getPublishedBySlug = async (req, res) => {
 
 exports.listSchoolEvents = async (req, res) => {
   try {
+    const { page, limit, offset } = parsePagination(req);
     const where = {};
     if (req.query.event_type) where.event_type = req.query.event_type;
     if (req.query.is_published !== undefined) where.is_published = req.query.is_published === "true";
     if (req.query.is_featured !== undefined) where.is_featured = req.query.is_featured === "true";
 
-    const rows = await SchoolEvent.findAll({
+    const search = String(req.query.search || "").trim();
+    if (search) {
+      const pattern = `%${search}%`;
+      where[Op.or] = [
+        { title: { [Op.iLike]: pattern } },
+        { description: { [Op.iLike]: pattern } },
+        { slug: { [Op.iLike]: pattern } },
+        { location: { [Op.iLike]: pattern } },
+      ];
+    }
+
+    const { count, rows } = await SchoolEvent.findAndCountAll({
       where,
       order: [["start_date", "DESC"]],
-      limit: Math.min(Number(req.query.limit) || 200, 500),
+      limit,
+      offset,
     });
-    return res.json({ success: true, data: rows });
+
+    return res.json({
+      success: true,
+      data: rows,
+      pagination: {
+        total: count,
+        page,
+        limit,
+        totalPages: Math.max(1, Math.ceil(count / limit)),
+      },
+    });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -81,12 +106,9 @@ exports.createSchoolEvent = async (req, res) => {
       event_type,
       start_date,
       end_date,
+      delivery_mode,
       location,
       meeting_link,
-      registration_required,
-      registration_deadline,
-      max_attendees,
-      fee_amount,
       tags,
       is_published,
       is_featured,
@@ -124,11 +146,14 @@ exports.createSchoolEvent = async (req, res) => {
       }
     }
 
+    const mode = delivery_mode || "physical";
+
     const row = await SchoolEvent.create({
       title,
       slug,
       description,
       event_type,
+      delivery_mode: mode,
       start_date,
       end_date,
       location: location || null,
@@ -140,15 +165,16 @@ exports.createSchoolEvent = async (req, res) => {
           ? poster_color_palette
           : { palette: poster_color_palette }
         : null,
-      registration_required: !!registration_required,
-      registration_deadline: registration_deadline || null,
-      max_attendees: max_attendees ?? null,
-      fee_amount: fee_amount ?? 0,
       created_by: req.user?.id || null,
       is_published: is_published !== false,
       is_featured: !!is_featured,
       tags: tags || [],
     });
+
+    if (isOnlineDelivery(mode) && !row.live_meeting_id) {
+      await row.update(provisionLiveFields(row.id));
+      await row.reload();
+    }
 
     return res.status(201).json({ success: true, data: row, poster: posterMeta });
   } catch (error) {
@@ -165,6 +191,7 @@ exports.updateSchoolEvent = async (req, res) => {
       "title",
       "description",
       "event_type",
+      "delivery_mode",
       "start_date",
       "end_date",
       "location",
@@ -172,10 +199,6 @@ exports.updateSchoolEvent = async (req, res) => {
       "poster_image",
       "poster_prompt",
       "poster_color_palette",
-      "registration_required",
-      "registration_deadline",
-      "max_attendees",
-      "fee_amount",
       "is_published",
       "is_featured",
       "tags",
@@ -206,6 +229,14 @@ exports.updateSchoolEvent = async (req, res) => {
     }
 
     await row.update(patch);
+    await row.reload();
+
+    const nextMode = patch.delivery_mode || row.delivery_mode;
+    if (isOnlineDelivery(nextMode) && !row.live_meeting_id) {
+      await row.update(provisionLiveFields(row.id));
+      await row.reload();
+    }
+
     return res.json({ success: true, data: row, poster: posterMeta });
   } catch (error) {
     return res.status(400).json({ success: false, message: error.message });

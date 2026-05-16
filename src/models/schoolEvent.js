@@ -44,6 +44,11 @@ module.exports = (sequelize) => {
         type: DataTypes.DATE,
         allowNull: false,
       },
+      delivery_mode: {
+        type: DataTypes.ENUM("physical", "online", "hybrid"),
+        allowNull: false,
+        defaultValue: "physical",
+      },
       location: {
         type: DataTypes.STRING(255),
         allowNull: true,
@@ -51,6 +56,21 @@ module.exports = (sequelize) => {
       meeting_link: {
         type: DataTypes.STRING(500),
         allowNull: true,
+      },
+      live_meeting_id: {
+        type: DataTypes.STRING(120),
+        allowNull: true,
+      },
+      live_platform: {
+        type: DataTypes.STRING(20),
+        allowNull: true,
+        defaultValue: "livekit",
+      },
+      session_status: {
+        type: DataTypes.STRING(20),
+        allowNull: false,
+        defaultValue: "scheduled",
+        validate: { isIn: [["scheduled", "live", "ended", "cancelled"]] },
       },
       poster_image: {
         type: DataTypes.STRING(500),
@@ -63,22 +83,6 @@ module.exports = (sequelize) => {
       poster_color_palette: {
         type: DataTypes.JSONB,
         allowNull: true,
-      },
-      registration_required: {
-        type: DataTypes.BOOLEAN,
-        defaultValue: false,
-      },
-      registration_deadline: {
-        type: DataTypes.DATE,
-        allowNull: true,
-      },
-      max_attendees: {
-        type: DataTypes.INTEGER,
-        allowNull: true,
-      },
-      fee_amount: {
-        type: DataTypes.DECIMAL(10, 2),
-        defaultValue: 0,
       },
       created_by: {
         type: DataTypes.UUID,

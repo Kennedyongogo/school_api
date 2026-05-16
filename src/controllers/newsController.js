@@ -2,6 +2,7 @@ const { Op } = require("sequelize");
 const { News } = require("../models");
 const PosterGenerator = require("../services/posterGenerator");
 const { slugify, ensureUniqueSlug } = require("../utils/slugify");
+const { parsePagination } = require("../utils/pagination");
 
 exports.listPublished = async (req, res) => {
   try {
@@ -40,17 +41,39 @@ exports.getPublishedBySlug = async (req, res) => {
 
 exports.listNews = async (req, res) => {
   try {
+    const { page, limit, offset } = parsePagination(req);
     const where = {};
     if (req.query.category) where.category = req.query.category;
     if (req.query.is_published !== undefined) where.is_published = req.query.is_published === "true";
     if (req.query.target_audience) where.target_audience = req.query.target_audience;
 
-    const rows = await News.findAll({
+    const search = String(req.query.search || "").trim();
+    if (search) {
+      const pattern = `%${search}%`;
+      where[Op.or] = [
+        { title: { [Op.iLike]: pattern } },
+        { summary: { [Op.iLike]: pattern } },
+        { slug: { [Op.iLike]: pattern } },
+      ];
+    }
+
+    const { count, rows } = await News.findAndCountAll({
       where,
       order: [["created_at", "DESC"]],
-      limit: Math.min(Number(req.query.limit) || 200, 500),
+      limit,
+      offset,
     });
-    return res.json({ success: true, data: rows });
+
+    return res.json({
+      success: true,
+      data: rows,
+      pagination: {
+        total: count,
+        page,
+        limit,
+        totalPages: Math.max(1, Math.ceil(count / limit)),
+      },
+    });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -73,7 +96,6 @@ exports.createNews = async (req, res) => {
       content,
       summary,
       category,
-      featured_image,
       tags,
       target_audience,
       is_published,
@@ -116,7 +138,6 @@ exports.createNews = async (req, res) => {
       summary: summary ?? poster_description ?? null,
       content,
       category: category || "general",
-      featured_image: featured_image || null,
       poster_image,
       poster_prompt,
       poster_color_palette: poster_color_palette
@@ -147,7 +168,6 @@ exports.updateNews = async (req, res) => {
       "summary",
       "content",
       "category",
-      "featured_image",
       "poster_image",
       "poster_prompt",
       "poster_color_palette",
