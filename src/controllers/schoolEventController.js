@@ -4,7 +4,7 @@ const PosterGenerator = require("../services/posterGenerator");
 const { slugify, ensureUniqueSlug } = require("../utils/slugify");
 const { parsePagination } = require("../utils/pagination");
 const { isOnlineDelivery, provisionLiveFields } = require("../services/eventLiveProvision");
-const { getEventJoinWindow } = require("../utils/eventJoinWindow");
+const { getEventJoinWindow, canRegenerateEventPoster } = require("../utils/eventJoinWindow");
 
 function toPublishedEventDto(row) {
   const j = row.toJSON ? row.toJSON() : { ...row };
@@ -231,6 +231,13 @@ exports.updateSchoolEvent = async (req, res) => {
 
     let posterMeta = null;
     if (req.body.generate_poster || req.body.generatePoster) {
+      const posterSource = { ...row.get({ plain: true }), ...patch };
+      if (!canRegenerateEventPoster(posterSource)) {
+        return res.status(403).json({
+          success: false,
+          message: "Poster cannot be regenerated after the event’s scheduled end time.",
+        });
+      }
       try {
         const desc =
           req.body.poster_description || patch.description || row.description || row.title;
@@ -266,6 +273,13 @@ exports.generatePosterForEvent = async (req, res) => {
   try {
     const row = await SchoolEvent.findByPk(req.params.id);
     if (!row) return res.status(404).json({ success: false, message: "Not found" });
+
+    if (!canRegenerateEventPoster(row)) {
+      return res.status(403).json({
+        success: false,
+        message: "Poster cannot be regenerated after the event’s scheduled end time.",
+      });
+    }
 
     const desc =
       req.body.poster_description || req.body.description || row.description || row.title;

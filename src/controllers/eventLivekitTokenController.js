@@ -44,7 +44,6 @@ exports.issueEventLiveKitToken = async (req, res) => {
       start_date: event.start_date,
       end_date: event.end_date,
       session_status: event.session_status,
-      is_staff: staff,
     });
 
     if (!joinWindow.can_join) {

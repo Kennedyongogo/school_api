@@ -31,7 +31,6 @@ exports.getEventLiveSession = async (req, res) => {
       start_date: event.start_date,
       end_date: event.end_date,
       session_status: event.session_status,
-      is_staff: staff,
     });
 
     const online = isOnlineDelivery(event.delivery_mode);
@@ -83,6 +82,18 @@ exports.startEventLive = async (req, res) => {
 
     const event = await loadEventForLive(req.params.id);
     assertEventSupportsLive(event);
+
+    const joinWindow = getEventJoinWindow({
+      start_date: event.start_date,
+      end_date: event.end_date,
+      session_status: event.session_status,
+    });
+    if (!joinWindow.can_join) {
+      return res.status(403).json({
+        success: false,
+        message: joinWindow.reason || "This event is not open for hosting.",
+      });
+    }
 
     const patch = {};
     if (!event.live_meeting_id) {
