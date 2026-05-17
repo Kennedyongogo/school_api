@@ -51,4 +51,37 @@ function dedupeLobbyEntriesByUser(formattedEntries) {
   return [...byUser.values()].sort((a, b) => (b.minutes_in_event ?? 0) - (a.minutes_in_event ?? 0));
 }
 
-module.exports = { minutesFromLobbyRow, computeDurationOnLeave, dedupeLobbyEntriesByUser };
+/** Every lobby row as a visit line, with visit # per user (1, 2, 3…). */
+function buildAttendanceLog(formattedEntries) {
+  const visitIndexByUser = new Map();
+  const log = [];
+
+  for (const e of formattedEntries) {
+    const uid = e.user?.id;
+    if (!uid) continue;
+    const visitNumber = (visitIndexByUser.get(uid) || 0) + 1;
+    visitIndexByUser.set(uid, visitNumber);
+    log.push({
+      ...e,
+      visit_number: visitNumber,
+    });
+  }
+
+  const totalVisitsByUser = new Map();
+  for (const row of log) {
+    const uid = row.user?.id;
+    if (uid) totalVisitsByUser.set(uid, (totalVisitsByUser.get(uid) || 0) + 1);
+  }
+  for (const row of log) {
+    row.user_total_visits = totalVisitsByUser.get(row.user?.id) || 1;
+  }
+
+  return log;
+}
+
+module.exports = {
+  minutesFromLobbyRow,
+  computeDurationOnLeave,
+  dedupeLobbyEntriesByUser,
+  buildAttendanceLog,
+};

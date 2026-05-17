@@ -11,6 +11,7 @@ const { isOnlineDelivery } = require("./eventLiveProvision");
 const {
   minutesFromLobbyRow,
   dedupeLobbyEntriesByUser,
+  buildAttendanceLog,
 } = require("../utils/eventAttendanceMinutes");
 
 const userSafe = { attributes: { exclude: ["password_hash"] } };
@@ -134,6 +135,7 @@ async function buildEventReport(eventId) {
 
   const allLobbyVisits = lobbyRows.map(formatLobbyEntry);
   const attendees = dedupeLobbyEntriesByUser(allLobbyVisits);
+  const attendance_log = buildAttendanceLog(allLobbyVisits);
   const chat = chatRows.map(formatChatRow);
 
   const withAdmission = attendees.filter((a) => a.admitted_at);
@@ -183,6 +185,7 @@ async function buildEventReport(eventId) {
       reaction_counts: reactionCounts,
     },
     attendees,
+    attendance_log,
     chat,
     reactions: reactionRows.map((r) => {
       const j = r.toJSON ? r.toJSON() : r;

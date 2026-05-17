@@ -16,9 +16,12 @@ function isConfigured() {
 }
 
 /**
- * @param {{ roomName: string, identity: string, name?: string, role?: 'teacher'|'student'|'host' }}
+ * LiveKit roles:
+ * - host / teacher: room admin (remote moderation) + publish + subscribe
+ * - participant / student: publish + subscribe only (no roomAdmin)
+ * @param {{ roomName: string, identity: string, name?: string, role?: 'host'|'teacher'|'participant'|'student' }}
  */
-async function createParticipantToken({ roomName, identity, name, role = "student" }) {
+async function createParticipantToken({ roomName, identity, name, role = "participant" }) {
   if (!isConfigured()) {
     const err = new Error("LiveKit is not configured. Set LIVEKIT_URL, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET.");
     err.statusCode = 503;
@@ -30,7 +33,8 @@ async function createParticipantToken({ roomName, identity, name, role = "studen
     throw err;
   }
 
-  const isHost = role === "teacher" || role === "host";
+  const normalizedRole = String(role || "participant").toLowerCase();
+  const isRoomAdmin = normalizedRole === "host" || normalizedRole === "teacher";
   const at = new AccessToken(process.env.LIVEKIT_API_KEY, process.env.LIVEKIT_API_SECRET, {
     identity: String(identity),
     name: name ? String(name) : String(identity),
@@ -42,8 +46,8 @@ async function createParticipantToken({ roomName, identity, name, role = "studen
     room: String(roomName),
     canSubscribe: true,
     canPublish: true,
-    canPublishData: false,
-    ...(isHost ? { roomAdmin: true, canUpdateOwnMetadata: true } : {}),
+    canPublishData: isRoomAdmin,
+    ...(isRoomAdmin ? { roomAdmin: true, canUpdateOwnMetadata: true } : {}),
   });
 
   const token = await at.toJwt();
@@ -105,10 +109,42 @@ async function removePublicParticipantsFromRoom(roomName) {
   return { removed };
 }
 
+/** Disconnect every participant from a LiveKit room. */
+async function removeAllParticipantsFromRoom(roomName) {
+  if (!isConfigured() || !roomName) return { removed: 0 };
+
+  const client = getRoomServiceClient();
+  if (!client) return { removed: 0 };
+
+  let participants = [];
+  try {
+    participants = await client.listParticipants(String(roomName));
+  } catch (err) {
+    if (/not found|404|does not exist/i.test(String(err?.message || err))) {
+      return { removed: 0 };
+    }
+    throw err;
+  }
+
+  let removed = 0;
+  for (const participant of participants) {
+    const identity = participant?.identity;
+    if (!identity) continue;
+    try {
+      await client.removeParticipant(String(roomName), String(identity));
+      removed += 1;
+    } catch (_) {
+      /* already left */
+    }
+  }
+  return { removed };
+}
+
 module.exports = {
   getLiveKitUrl,
   getLiveKitApiUrl,
   isConfigured,
   createParticipantToken,
   removePublicParticipantsFromRoom,
+  removeAllParticipantsFromRoom,
 };

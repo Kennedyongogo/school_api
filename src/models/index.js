@@ -90,6 +90,11 @@ const EventLobbyEntry = require("./eventLobbyEntry")(sequelize);
 const EventLiveChat = require("./eventLiveChat")(sequelize);
 const EventLiveReaction = require("./eventLiveReaction")(sequelize);
 const EventLiveHandRaise = require("./eventLiveHandRaise")(sequelize);
+const AdminMeeting = require("./adminMeeting")(sequelize);
+const AdminMeetingLobbyEntry = require("./adminMeetingLobbyEntry")(sequelize);
+const AdminMeetingLiveChat = require("./adminMeetingLiveChat")(sequelize);
+const AdminMeetingLiveReaction = require("./adminMeetingLiveReaction")(sequelize);
+const AdminMeetingLiveHandRaise = require("./adminMeetingLiveHandRaise")(sequelize);
 const AdmissionApplication = require("./admissionApplication")(sequelize);
 const AdmissionSettings = require("./admissionSettings")(sequelize);
 const LiveClass = require("./liveClass")(sequelize);
@@ -231,6 +236,11 @@ const models = {
   EventLiveChat,
   EventLiveReaction,
   EventLiveHandRaise,
+  AdminMeeting,
+  AdminMeetingLobbyEntry,
+  AdminMeetingLiveChat,
+  AdminMeetingLiveReaction,
+  AdminMeetingLiveHandRaise,
   AdmissionApplication,
   AdmissionSettings,
   LiveClass,
@@ -364,6 +374,11 @@ const initializeModels = async () => {
     await EventLiveChat.sync({ force: false, alter: false });
     await EventLiveReaction.sync({ force: false, alter: false });
     await EventLiveHandRaise.sync({ force: false, alter: true });
+    await AdminMeeting.sync({ force: false, alter: true });
+    await AdminMeetingLobbyEntry.sync({ force: false, alter: true });
+    await AdminMeetingLiveChat.sync({ force: false, alter: true });
+    await AdminMeetingLiveReaction.sync({ force: false, alter: false });
+    await AdminMeetingLiveHandRaise.sync({ force: false, alter: true });
     await AdmissionApplication.sync({ force: false, alter: true });
     await AdmissionSettings.sync({ force: false, alter: false });
 
@@ -1739,6 +1754,31 @@ const setupAssociations = () => {
     EventLiveHandRaise.belongsTo(SchoolEvent, { foreignKey: "event_id", as: "event" });
     EventLiveHandRaise.belongsTo(User, { foreignKey: "user_id", as: "user" });
     EventLiveHandRaise.belongsTo(User, { foreignKey: "dismissed_by", as: "dismissed_by_user" });
+
+    User.hasMany(AdminMeeting, { foreignKey: "created_by", as: "created_admin_meetings" });
+    AdminMeeting.belongsTo(User, { foreignKey: "created_by", as: "creator" });
+    AdminMeeting.belongsTo(User, { foreignKey: "updated_by", as: "updater" });
+
+    AdminMeeting.hasMany(AdminMeetingLobbyEntry, { foreignKey: "meeting_id", as: "lobby_entries" });
+    AdminMeetingLobbyEntry.belongsTo(AdminMeeting, { foreignKey: "meeting_id", as: "meeting" });
+    AdminMeetingLobbyEntry.belongsTo(User, { foreignKey: "user_id", as: "user" });
+    AdminMeetingLobbyEntry.belongsTo(User, { foreignKey: "admitted_by", as: "admitted_by_user" });
+    AdminMeetingLobbyEntry.belongsTo(User, { foreignKey: "denied_by", as: "denied_by_user" });
+
+    AdminMeeting.hasMany(AdminMeetingLiveChat, { foreignKey: "meeting_id", as: "live_chats" });
+    AdminMeetingLiveChat.belongsTo(AdminMeeting, { foreignKey: "meeting_id", as: "meeting" });
+    AdminMeetingLiveChat.belongsTo(User, { foreignKey: "user_id", as: "author" });
+    AdminMeetingLiveChat.belongsTo(AdminMeetingLiveChat, { foreignKey: "parent_id", as: "parent" });
+    AdminMeetingLiveChat.hasMany(AdminMeetingLiveChat, { foreignKey: "parent_id", as: "replies" });
+
+    AdminMeeting.hasMany(AdminMeetingLiveReaction, { foreignKey: "meeting_id", as: "live_reactions" });
+    AdminMeetingLiveReaction.belongsTo(AdminMeeting, { foreignKey: "meeting_id", as: "meeting" });
+    AdminMeetingLiveReaction.belongsTo(User, { foreignKey: "user_id", as: "user" });
+
+    AdminMeeting.hasMany(AdminMeetingLiveHandRaise, { foreignKey: "meeting_id", as: "hand_raises" });
+    AdminMeetingLiveHandRaise.belongsTo(AdminMeeting, { foreignKey: "meeting_id", as: "meeting" });
+    AdminMeetingLiveHandRaise.belongsTo(User, { foreignKey: "user_id", as: "user" });
+    AdminMeetingLiveHandRaise.belongsTo(User, { foreignKey: "dismissed_by", as: "dismissed_by_user" });
 
     AcademicYear.hasMany(AdmissionSettings, {
       foreignKey: "academic_year_id",

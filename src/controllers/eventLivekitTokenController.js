@@ -54,7 +54,9 @@ exports.issueEventLiveKitToken = async (req, res) => {
       });
     }
 
-    let role = staff ? "teacher" : "student";
+    const isEventHost =
+      staff && event.created_by && String(event.created_by) === String(req.user.id);
+    let role = staff ? (isEventHost ? "host" : "participant") : "participant";
 
     if (!staff) {
       const entry = await EventLobbyEntry.findOne({
@@ -78,9 +80,11 @@ exports.issueEventLiveKitToken = async (req, res) => {
       (user?.username && String(user.username).trim()) ||
       "Participant";
 
+    const participantIdentity = String(req.user.id);
+
     const { token, url } = await createParticipantToken({
       roomName,
-      identity: String(req.user.id),
+      identity: participantIdentity,
       name: displayName,
       role,
     });
@@ -92,6 +96,9 @@ exports.issueEventLiveKitToken = async (req, res) => {
         url,
         room_name: roomName,
         event_id: event.id,
+        identity: participantIdentity,
+        livekit_role: role,
+        is_host: role === "host",
       },
     });
   } catch (error) {

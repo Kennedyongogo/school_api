@@ -133,6 +133,14 @@ class SignalingService {
         if (!eventId) return;
         socket.leave(`event:${eventId}`);
       });
+      socket.on("join:admin-meeting", (meetingId) => {
+        if (!meetingId) return;
+        socket.join(`admin-meeting:${meetingId}`);
+      });
+      socket.on("leave:admin-meeting", (meetingId) => {
+        if (!meetingId) return;
+        socket.leave(`admin-meeting:${meetingId}`);
+      });
       if (socket.user?.id) {
         socket.join(`user:${socket.user.id}`);
       }

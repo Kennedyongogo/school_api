@@ -4,6 +4,25 @@ const PosterGenerator = require("../services/posterGenerator");
 const { slugify, ensureUniqueSlug } = require("../utils/slugify");
 const { parsePagination } = require("../utils/pagination");
 const { isOnlineDelivery, provisionLiveFields } = require("../services/eventLiveProvision");
+const { getEventJoinWindow } = require("../utils/eventJoinWindow");
+
+function toPublishedEventDto(row) {
+  const j = row.toJSON ? row.toJSON() : { ...row };
+  if (isOnlineDelivery(j.delivery_mode)) {
+    const join_window = getEventJoinWindow({
+      start_date: j.start_date,
+      end_date: j.end_date,
+      session_status: j.session_status || "scheduled",
+      is_staff: false,
+    });
+    j.join_window = join_window;
+    j.can_join_live = join_window.can_join;
+  } else {
+    j.join_window = null;
+    j.can_join_live = false;
+  }
+  return j;
+}
 
 exports.listPublished = async (req, res) => {
   try {
@@ -12,7 +31,7 @@ exports.listPublished = async (req, res) => {
       order: [["start_date", "ASC"]],
       limit: Math.min(Number(req.query.limit) || 50, 100),
     });
-    return res.json({ success: true, data: rows });
+    return res.json({ success: true, data: rows.map(toPublishedEventDto) });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -29,7 +48,7 @@ exports.listPublishedUpcoming = async (req, res) => {
       order: [["start_date", "ASC"]],
       limit: Math.min(Number(req.query.limit) || 50, 100),
     });
-    return res.json({ success: true, data: rows });
+    return res.json({ success: true, data: rows.map(toPublishedEventDto) });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -41,7 +60,7 @@ exports.getPublishedBySlug = async (req, res) => {
       where: { slug: req.params.slug, is_published: true },
     });
     if (!row) return res.status(404).json({ success: false, message: "Not found" });
-    return res.json({ success: true, data: row });
+    return res.json({ success: true, data: toPublishedEventDto(row) });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
