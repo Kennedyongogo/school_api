@@ -6,7 +6,6 @@ const {
   Enrollment,
   Student,
   Parent,
-  StudentParent,
   Teacher,
 } = require("../models");
 const { STAFF_ROLES } = require("../constants/userRoles");
@@ -53,8 +52,11 @@ async function assertCanViewClassAssignment(req, classAssignmentId, studentId) {
   if (req.user.role === "parent") {
     const parent = await Parent.findOne({ where: { user_id: req.user.id } });
     if (!parent) return false;
-    const link = await StudentParent.findOne({
-      where: { parent_id: parent.id, student_id: studentId },
+    const link = await Parent.findOne({
+      where: {
+        user_id: parent.user_id,
+        student_ids: { [Op.contains]: [studentId] },
+      },
     });
     if (!link) return false;
     const en = await Enrollment.findOne({
@@ -95,11 +97,11 @@ exports.listSyllabi = async (req, res) => {
     if (req.user.role === "parent") {
       const parent = await Parent.findOne({ where: { user_id: req.user.id } });
       if (!parent) return res.json({ success: true, data: [] });
-      const links = await StudentParent.findAll({
-        where: { parent_id: parent.id },
-        attributes: ["student_id"],
+      const parentRow = await Parent.findOne({
+        where: { user_id: parent.user_id },
+        attributes: ["student_ids"],
       });
-      const studentIds = links.map((l) => l.student_id);
+      const studentIds = parentRow?.student_ids?.filter(Boolean) || [];
       if (!studentIds.length) return res.json({ success: true, data: [] });
       const enrollments = await Enrollment.findAll({
         where: { student_id: { [Op.in]: studentIds }, is_active: true },

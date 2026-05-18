@@ -80,6 +80,7 @@ const admissionApplicationRoutes = require("./routes/admissionApplicationRoutes"
 const admissionSettingsRoutes = require("./routes/admissionSettingsRoutes");
 const platformModulesRoutes = require("./routes/platformModulesRoutes");
 const schoolProfileRoutes = require("./routes/schoolProfileRoutes");
+const elimuPlusRoutes = require("./routes/elimuPlusRoutes");
 const schoolPortalRoutes = require("./routes/schoolPortalRoutes");
 const publicRoutes = require("./routes/publicRoutes");
 
@@ -346,6 +347,8 @@ app.use("/api/platform", platformModulesRoutes);
 console.log("✅ /api/platform route registered (LMS, live classes, notifications, etc.)");
 app.use("/api/school-profile", schoolProfileRoutes);
 console.log("✅ /api/school-profile route registered");
+app.use("/api/elimu-plus", elimuPlusRoutes);
+console.log("✅ /api/elimu-plus route registered");
 app.use("/api/school-portal", schoolPortalRoutes);
 console.log("✅ /api/school-portal route registered");
 app.use("/api/public", publicRoutes);

@@ -471,10 +471,10 @@ const setupAssociations = () => {
     });
     Teacher.belongsTo(User, { foreignKey: "user_id", as: "user" });
 
-    User.hasOne(Parent, {
+    User.hasMany(Parent, {
       foreignKey: "user_id",
       onDelete: "CASCADE",
-      as: "parent_profile",
+      as: "parent_profiles",
     });
     Parent.belongsTo(User, { foreignKey: "user_id", as: "user" });
 
@@ -484,19 +484,6 @@ const setupAssociations = () => {
       as: "school_admin_profile",
     });
     SchoolAdmin.belongsTo(User, { foreignKey: "user_id", as: "user" });
-
-    Student.belongsToMany(Parent, {
-      through: StudentParent,
-      foreignKey: "student_id",
-      otherKey: "parent_id",
-      as: "parents",
-    });
-    Parent.belongsToMany(Student, {
-      through: StudentParent,
-      foreignKey: "parent_id",
-      otherKey: "student_id",
-      as: "students",
-    });
 
     Teacher.hasMany(Student, {
       foreignKey: "class_teacher_id",

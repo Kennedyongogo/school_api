@@ -4,9 +4,9 @@ const {
   sequelize,
   Student,
   User,
+  Parent,
   Installment,
   PaymentGracePeriod,
-  StudentParent,
   AccountStatus,
   DeactivationLog,
 } = require("../models");
@@ -17,14 +17,11 @@ const {
 } = require("./deactivationNotifications");
 
 async function getPrimaryParentId(studentId) {
-  const link = await StudentParent.findOne({
-    where: { student_id: studentId },
-    order: [
-      ["is_primary_contact", "DESC"],
-      ["created_at", "ASC"],
-    ],
+  const parent = await Parent.findOne({
+    where: { student_ids: { [Op.contains]: [studentId] } },
+    attributes: ["id"],
   });
-  return link?.parent_id ?? null;
+  return parent?.id ?? null;
 }
 
 async function deactivateStudentForNonPayment(

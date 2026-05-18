@@ -1,17 +1,166 @@
-const bcrypt = require("bcryptjs");
 const { Op } = require("sequelize");
 const moment = require("moment");
-const { sequelize, User, Parent, Installment } = require("../models");
-const { normalizeEmail, normalizeUsername, duplicateUserWhere } = require("../utils/userIdentity");
+const { User, Parent, Student, Installment } = require("../models");
+const { normalizeEmail, normalizeUsername } = require("../utils/userIdentity");
 const { getRemainingGraceDays } = require("../utils/gracePeriod");
 
 const userExclude = { exclude: ["password_hash"] };
 
+function normalizeStudentIds(input) {
+  if (Array.isArray(input)) {
+    return [...new Set(input.map((id) => String(id).trim()).filter(Boolean))];
+  }
+  if (input != null && input !== "") {
+    return [String(input).trim()];
+  }
+  return [];
+}
+
+async function getGloballyLinkedStudentIds(excludeParentId = null) {
+  const rows = await Parent.findAll({ attributes: ["id", "student_ids"] });
+  const linked = new Set();
+  for (const row of rows) {
+    if (excludeParentId && row.id === excludeParentId) continue;
+    for (const id of row.student_ids || []) {
+      if (id) linked.add(String(id));
+    }
+  }
+  return linked;
+}
+
+async function assertStudentsLinkable(studentIdsInput, excludeParentId = null) {
+  const studentIds = normalizeStudentIds(studentIdsInput);
+  if (!studentIds.length) {
+    return { error: "At least one student is required — provide student_ids as an array" };
+  }
+
+  const students = await Student.findAll({ where: { id: studentIds } });
+  if (students.length !== studentIds.length) {
+    return { error: "One or more student_ids are invalid" };
+  }
+
+  const linked = await getGloballyLinkedStudentIds(excludeParentId);
+  const taken = studentIds.filter((id) => linked.has(id));
+  if (taken.length) {
+    return {
+      error: "One or more students are already linked to another parent profile",
+      taken,
+    };
+  }
+
+  return { studentIds };
+}
+
+async function hydrateParent(parentRow) {
+  const json = parentRow.toJSON ? parentRow.toJSON() : { ...parentRow };
+  const ids = Array.isArray(json.student_ids) ? json.student_ids.filter(Boolean) : [];
+  if (!ids.length) {
+    json.students = [];
+    return json;
+  }
+  const students = await Student.findAll({
+    where: { id: ids },
+    include: [{ model: User, as: "user", attributes: userExclude }],
+  });
+  const byId = new Map(students.map((s) => [String(s.id), s]));
+  json.students = ids.map((id) => byId.get(String(id))).filter(Boolean);
+  return json;
+}
+
+async function hydrateParents(rows) {
+  return Promise.all(rows.map((r) => hydrateParent(r)));
+}
+
+const userInclude = { model: User, as: "user", attributes: userExclude };
+
 exports.listParents = async (req, res) => {
   try {
-    const rows = await Parent.findAll({
-      include: [{ model: User, as: "user", attributes: userExclude }],
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const rawLimit = parseInt(req.query.limit, 10);
+    const limit = Math.min(100, Math.max(1, Number.isFinite(rawLimit) && rawLimit > 0 ? rawLimit : 10));
+    const offset = (page - 1) * limit;
+    const search = String(req.query.search || "").trim();
+
+    const parentWhere = {};
+    const userIncludeClause = { ...userInclude, required: false };
+
+    if (search) {
+      const like = { [Op.iLike]: `%${search}%` };
+      const matchingStudents = await Student.findAll({
+        attributes: ["id"],
+        include: [
+          {
+            model: User,
+            as: "user",
+            attributes: [],
+            where: {
+              [Op.or]: [{ full_name: like }, { email: like }, { username: like }],
+            },
+            required: false,
+          },
+        ],
+        where: {
+          [Op.or]: [
+            { admission_number: like },
+            { "$user.full_name$": like },
+            { "$user.email$": like },
+            { "$user.username$": like },
+          ],
+        },
+        subQuery: false,
+      });
+      const studentIds = matchingStudents.map((s) => s.id);
+      const orClauses = [
+        { "$user.full_name$": like },
+        { "$user.email$": like },
+        { "$user.username$": like },
+        { occupation: like },
+        { relationship: like },
+      ];
+      if (studentIds.length) {
+        orClauses.push({ student_ids: { [Op.overlap]: studentIds } });
+      }
+      parentWhere[Op.or] = orClauses;
+      userIncludeClause.required = false;
+    }
+
+    const { count, rows } = await Parent.findAndCountAll({
+      where: parentWhere,
+      include: [userIncludeClause],
       order: [["created_at", "DESC"]],
+      limit,
+      offset,
+      distinct: true,
+      subQuery: false,
+    });
+
+    const data = await hydrateParents(rows);
+    return res.json({
+      success: true,
+      data,
+      pagination: {
+        total: count,
+        page,
+        limit,
+        totalPages: Math.max(1, Math.ceil(count / limit)),
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/** Students not listed on any parent profile's student_ids. */
+exports.listStudentsWithoutParent = async (req, res) => {
+  try {
+    const linked = await getGloballyLinkedStudentIds();
+    const where = linked.size ? { id: { [Op.notIn]: [...linked] } } : {};
+
+    const rows = await Student.findAll({
+      where,
+      include: [userInclude],
+      order: [["created_at", "DESC"]],
+      limit: 500,
     });
     return res.json({ success: true, data: rows });
   } catch (error) {
@@ -19,15 +168,41 @@ exports.listParents = async (req, res) => {
   }
 };
 
+exports.listParentUsersWithoutProfile = async (req, res) => {
+  try {
+    const users = await User.findAll({
+      where: { role: "parent" },
+      attributes: userExclude,
+      include: [
+        {
+          model: Parent,
+          as: "parent_profiles",
+          required: false,
+          attributes: ["id"],
+        },
+      ],
+      order: [["full_name", "ASC"]],
+    });
+    const data = users
+      .filter((u) => !u.parent_profiles?.length)
+      .map((u) => {
+        const j = u.toJSON();
+        delete j.parent_profiles;
+        return j;
+      });
+    return res.json({ success: true, data });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 exports.getParent = async (req, res) => {
   try {
-    const row = await Parent.findByPk(req.params.id, {
-      include: [{ model: User, as: "user", attributes: userExclude }],
-    });
+    const row = await Parent.findByPk(req.params.id, { include: [userInclude] });
     if (!row) {
       return res.status(404).json({ success: false, message: "Parent not found" });
     }
-    return res.json({ success: true, data: row });
+    return res.json({ success: true, data: await hydrateParent(row) });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -37,12 +212,13 @@ exports.getMyParentProfile = async (req, res) => {
   try {
     const row = await Parent.findOne({
       where: { user_id: req.user.id },
-      include: [{ model: User, as: "user", attributes: userExclude }],
+      include: [userInclude],
+      order: [["created_at", "DESC"]],
     });
     if (!row) {
       return res.status(404).json({ success: false, message: "Parent profile not found" });
     }
-    return res.json({ success: true, data: row });
+    return res.json({ success: true, data: await hydrateParent(row) });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -50,13 +226,19 @@ exports.getMyParentProfile = async (req, res) => {
 
 exports.getMyStudentsFeeOverview = async (req, res) => {
   try {
-    const parent = await Parent.findOne({ where: { user_id: req.user.id } });
-    if (!parent) {
+    const parentRow = await Parent.findOne({ where: { user_id: req.user.id } });
+    if (!parentRow) {
       return res.status(404).json({ success: false, message: "Parent profile not found" });
     }
 
-    const students = await parent.getStudents({
-      include: [{ model: User, as: "user", attributes: userExclude }],
+    const studentIds = [...new Set((parentRow.student_ids || []).filter(Boolean))];
+    if (!studentIds.length) {
+      return res.json({ success: true, data: [] });
+    }
+
+    const students = await Student.findAll({
+      where: { id: studentIds },
+      include: [userInclude],
     });
 
     const todayStr = moment().format("YYYY-MM-DD");
@@ -105,69 +287,52 @@ exports.getMyStudentsFeeOverview = async (req, res) => {
 
 exports.createParent = async (req, res) => {
   const {
-    username,
-    email,
-    password,
-    full_name,
-    phone,
-    address,
-    profile_image,
+    user_id: bodyUserId,
+    student_id,
+    student_ids: bodyStudentIds,
     occupation,
     relationship,
-    emergency_contact,
     newsletter_subscription,
   } = req.body;
 
-  if (!username || !email || !password || !full_name || !relationship) {
+  const idsInput = bodyStudentIds !== undefined ? bodyStudentIds : student_id;
+
+  if (!bodyUserId) {
     return res.status(400).json({
       success: false,
-      message: "username, email, password, full_name, and relationship are required",
+      message: "user_id is required — select an existing parent user account",
     });
   }
 
-  const emailNorm = normalizeEmail(email);
-  const usernameNorm = normalizeUsername(username);
-  const dup = await User.findOne({ where: duplicateUserWhere(email, username) });
-  if (dup) {
-    return res.status(400).json({ success: false, message: "Email or username already in use" });
+  if (!relationship) {
+    return res.status(400).json({ success: false, message: "relationship is required" });
   }
 
-  const t = await sequelize.transaction();
+  const linkCheck = await assertStudentsLinkable(idsInput);
+  if (linkCheck.error) {
+    return res.status(400).json({ success: false, message: linkCheck.error });
+  }
+
   try {
-    const password_hash = await bcrypt.hash(password, 10);
-    const user = await User.create(
-      {
-        username: usernameNorm,
-        email: emailNorm,
-        password_hash,
-        role: "parent",
-        full_name,
-        phone,
-        address,
-        profile_image: profile_image || null,
-      },
-      { transaction: t }
-    );
+    const user = await User.findByPk(bodyUserId);
+    if (!user || user.role !== "parent") {
+      return res.status(400).json({
+        success: false,
+        message: "user_id must reference an existing user with role parent",
+      });
+    }
 
-    const parent = await Parent.create(
-      {
-        user_id: user.id,
-        occupation,
-        relationship,
-        emergency_contact: !!emergency_contact,
-        newsletter_subscription: newsletter_subscription !== false,
-      },
-      { transaction: t }
-    );
-
-    await t.commit();
-
-    const created = await Parent.findByPk(parent.id, {
-      include: [{ model: User, as: "user", attributes: userExclude }],
+    const parent = await Parent.create({
+      user_id: bodyUserId,
+      student_ids: linkCheck.studentIds,
+      occupation: occupation || null,
+      relationship,
+      newsletter_subscription: newsletter_subscription !== false,
     });
-    return res.status(201).json({ success: true, data: created });
+
+    const created = await Parent.findByPk(parent.id, { include: [userInclude] });
+    return res.status(201).json({ success: true, data: await hydrateParent(created) });
   } catch (error) {
-    await t.rollback();
     return res.status(400).json({ success: false, message: error.message });
   }
 };
@@ -179,11 +344,22 @@ exports.updateParent = async (req, res) => {
       return res.status(404).json({ success: false, message: "Parent not found" });
     }
 
-    const fields = ["occupation", "relationship", "emergency_contact", "newsletter_subscription"];
+    const fields = ["occupation", "relationship", "newsletter_subscription"];
     const patch = {};
     for (const key of fields) {
       if (req.body[key] !== undefined) patch[key] = req.body[key];
     }
+
+    if (req.body.student_ids !== undefined || req.body.student_id !== undefined) {
+      const idsInput =
+        req.body.student_ids !== undefined ? req.body.student_ids : req.body.student_id;
+      const linkCheck = await assertStudentsLinkable(idsInput, parent.id);
+      if (linkCheck.error) {
+        return res.status(400).json({ success: false, message: linkCheck.error });
+      }
+      patch.student_ids = linkCheck.studentIds;
+    }
+
     await parent.update(patch);
 
     if (req.body.user && parent.user_id) {
@@ -201,14 +377,15 @@ exports.updateParent = async (req, res) => {
       }
     }
 
-    const updated = await Parent.findByPk(parent.id, {
-      include: [{ model: User, as: "user", attributes: userExclude }],
-    });
-    return res.json({ success: true, data: updated });
+    const updated = await Parent.findByPk(parent.id, { include: [userInclude] });
+    return res.json({ success: true, data: await hydrateParent(updated) });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
+
+exports.hydrateParent = hydrateParent;
+exports.hydrateParents = hydrateParents;
 
 exports.deleteParent = async (req, res) => {
   try {
@@ -216,8 +393,11 @@ exports.deleteParent = async (req, res) => {
     if (!parent) {
       return res.status(404).json({ success: false, message: "Parent not found" });
     }
-    await User.destroy({ where: { id: parent.user_id } });
-    return res.json({ success: true, message: "Parent deleted" });
+    await parent.destroy();
+    return res.json({
+      success: true,
+      message: "Parent profile removed; user account kept (you can link a new profile later).",
+    });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }

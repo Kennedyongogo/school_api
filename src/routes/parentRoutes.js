@@ -2,6 +2,8 @@ const express = require("express");
 const router = express.Router();
 const {
   listParents,
+  listStudentsWithoutParent,
+  listParentUsersWithoutProfile,
   getParent,
   getMyParentProfile,
   getMyStudentsFeeOverview,
@@ -22,6 +24,18 @@ router.get(
   getMyStudentsFeeOverview
 );
 router.get("/", authenticateUser, authorizeRoles(ADMIN_PORTAL_API_ROLES), listParents);
+router.get(
+  "/students-without-parent",
+  authenticateUser,
+  authorizeRoles(ADMIN_PORTAL_API_ROLES),
+  listStudentsWithoutParent
+);
+router.get(
+  "/users-without-profile",
+  authenticateUser,
+  authorizeRoles(ADMIN_PORTAL_API_ROLES),
+  listParentUsersWithoutProfile
+);
 router.post("/", authenticateUser, authorizeRoles(ADMIN_PORTAL_API_ROLES), createParent);
 router.get("/:id", authenticateUser, authorizeRoles(ADMIN_PORTAL_API_ROLES), getParent);
 router.put("/:id", authenticateUser, authorizeRoles(ADMIN_PORTAL_API_ROLES), updateParent);

@@ -30,26 +30,26 @@ async function resolveReviewerSnapshot(user) {
       err.statusCode = 404;
       throw err;
     }
+    const displayName = String(user.full_name || user.username || "Student").trim() || "Student";
     return {
       student_id: student.id,
       parent_id: null,
       reviewer_role: "student",
-      display_name: user.full_name,
+      display_name: displayName.slice(0, 100),
       profile_image_url: student.profile_picture || user.profile_image || null,
     };
   }
   if (user.role === "parent") {
-    const parent = await Parent.findOne({ where: { user_id: user.id } });
-    if (!parent) {
-      const err = new Error("Parent profile not found");
-      err.statusCode = 404;
-      throw err;
-    }
+    const parent = await Parent.findOne({
+      where: { user_id: user.id },
+      order: [["created_at", "DESC"]],
+    });
+    const displayName = String(user.full_name || user.username || "Parent").trim() || "Parent";
     return {
       student_id: null,
-      parent_id: parent.id,
+      parent_id: parent?.id ?? null,
       reviewer_role: "parent",
-      display_name: user.full_name,
+      display_name: displayName.slice(0, 100),
       profile_image_url: user.profile_image || null,
     };
   }

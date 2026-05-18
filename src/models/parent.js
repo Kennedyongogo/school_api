@@ -14,6 +14,12 @@ module.exports = (sequelize) => {
         allowNull: false,
         references: { model: "users", key: "id" },
       },
+      /** Student profiles linked to this parent (PostgreSQL UUID array). */
+      student_ids: {
+        type: DataTypes.ARRAY(DataTypes.UUID),
+        allowNull: false,
+        defaultValue: [],
+      },
       occupation: {
         type: DataTypes.STRING(100),
         allowNull: true,
@@ -21,10 +27,6 @@ module.exports = (sequelize) => {
       relationship: {
         type: DataTypes.ENUM("father", "mother", "guardian", "other"),
         allowNull: false,
-      },
-      emergency_contact: {
-        type: DataTypes.BOOLEAN,
-        defaultValue: false,
       },
       newsletter_subscription: {
         type: DataTypes.BOOLEAN,

@@ -8,7 +8,6 @@ const {
   CurriculumClass,
   Enrollment,
   Section,
-  StudentParent,
 } = require("../models");
 const { normalizeEmail, normalizeUsername, duplicateUserWhere } = require("../utils/userIdentity");
 const { convertToRelativePath } = require("../utils/filePath");
@@ -482,8 +481,6 @@ exports.deleteStudent = async (req, res) => {
       await en.destroy({ transaction: t });
       if (section && en.is_active) await section.decrement("current_enrollment", { transaction: t });
     }
-
-    await StudentParent.destroy({ where: { student_id: student.id }, transaction: t });
 
     await student.destroy({ transaction: t });
 
