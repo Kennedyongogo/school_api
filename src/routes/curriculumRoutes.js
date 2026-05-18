@@ -59,11 +59,6 @@ const {
   getCurriculumSubjectTopic,
   updateCurriculumSubjectTopic,
   deleteCurriculumSubjectTopic,
-  listCurriculumSubjectGradingBands,
-  createCurriculumSubjectGradingBand,
-  getCurriculumSubjectGradingBand,
-  updateCurriculumSubjectGradingBand,
-  deleteCurriculumSubjectGradingBand,
 } = require("../controllers/curriculumHierarchyController");
 const { authenticateUser, authorizeRoles } = require("../middleware/auth");
 const { errorHandler } = require("../middleware/errorHandler");
@@ -212,12 +207,6 @@ router.delete(
 router.get("/:curriculumId/subjects/:subjectId/topics/:topicId", authenticateUser, authorizeRoles(TEACH_OR_STAFF), getCurriculumSubjectTopic);
 router.put("/:curriculumId/subjects/:subjectId/topics/:topicId", authenticateUser, authorizeRoles(ADMIN_PORTAL_API_ROLES), updateCurriculumSubjectTopic);
 router.delete("/:curriculumId/subjects/:subjectId/topics/:topicId", authenticateUser, authorizeRoles(ADMIN_PORTAL_API_ROLES), deleteCurriculumSubjectTopic);
-
-router.get("/:curriculumId/subjects/:subjectId/grading-bands", authenticateUser, authorizeRoles(TEACH_OR_STAFF), listCurriculumSubjectGradingBands);
-router.post("/:curriculumId/subjects/:subjectId/grading-bands", authenticateUser, authorizeRoles(ADMIN_PORTAL_API_ROLES), createCurriculumSubjectGradingBand);
-router.get("/:curriculumId/subjects/:subjectId/grading-bands/:bandId", authenticateUser, authorizeRoles(TEACH_OR_STAFF), getCurriculumSubjectGradingBand);
-router.put("/:curriculumId/subjects/:subjectId/grading-bands/:bandId", authenticateUser, authorizeRoles(ADMIN_PORTAL_API_ROLES), updateCurriculumSubjectGradingBand);
-router.delete("/:curriculumId/subjects/:subjectId/grading-bands/:bandId", authenticateUser, authorizeRoles(ADMIN_PORTAL_API_ROLES), deleteCurriculumSubjectGradingBand);
 
 router.get("/:id", authenticateUser, authorizeRoles(TEACH_OR_STAFF), getCurriculum);
 router.put("/:id", authenticateUser, authorizeRoles(ADMIN_PORTAL_API_ROLES), updateCurriculum);

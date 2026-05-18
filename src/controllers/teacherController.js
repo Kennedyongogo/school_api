@@ -4,7 +4,6 @@ const {
   User,
   Teacher,
   Department,
-  Section,
   Student,
   Curriculum,
   CurriculumClass,
@@ -580,7 +579,6 @@ exports.deleteTeacher = async (req, res) => {
     const picPath = teacher.profile_picture;
 
     await Department.update({ head_of_department: null }, { where: { head_of_department: teacher.id }, transaction: t });
-    await Section.update({ class_teacher_id: null }, { where: { class_teacher_id: teacher.id }, transaction: t });
     await Student.update({ class_teacher_id: null }, { where: { class_teacher_id: teacher.id }, transaction: t });
 
     await teacher.destroy({ transaction: t });

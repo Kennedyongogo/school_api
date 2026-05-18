@@ -6,12 +6,8 @@ const {
   CurriculumSubject,
   CurriculumSubjectTopic,
   CurriculumSubjectSubtopic,
-  CurriculumSubjectGradingBand,
-  Subject,
 } = require("../models");
 const { serializeTopicWithSubtopics } = require("../utils/curriculumTopicTree");
-
-const catalogAttrs = ["id", "name", "code", "department_id", "credit_hours", "is_elective"];
 
 function parsePagination(req) {
   const page = Math.max(1, parseInt(req.query.page, 10) || 1);
@@ -136,7 +132,6 @@ exports.getCurriculum = async (req, res) => {
       const subjects = await CurriculumSubject.findAll({
         where: { curriculum_id: curriculumId },
         include: [
-          { model: Subject, as: "catalog_subject", attributes: catalogAttrs, required: false },
           { model: CurriculumClass, as: "curriculum_class", required: false },
           {
             model: CurriculumClassLevel,
@@ -170,33 +165,15 @@ exports.getCurriculum = async (req, res) => {
               ],
             })
           : [];
-      const bands =
-        subjectIds.length > 0
-          ? await CurriculumSubjectGradingBand.findAll({
-              where: { curriculum_subject_id: { [Op.in]: subjectIds } },
-              order: [
-                ["order_index", "ASC"],
-                ["label", "ASC"],
-              ],
-            })
-          : [];
-
       const topicsBySubject = {};
       for (const t of topics) {
         if (!topicsBySubject[t.curriculum_subject_id]) topicsBySubject[t.curriculum_subject_id] = [];
         topicsBySubject[t.curriculum_subject_id].push(t);
       }
-      const bandsBySubject = {};
-      for (const b of bands) {
-        if (!bandsBySubject[b.curriculum_subject_id]) bandsBySubject[b.curriculum_subject_id] = [];
-        bandsBySubject[b.curriculum_subject_id].push(b);
-      }
-
       const curriculumSubjects = subjects.map((s) => {
         const j = s.toJSON();
         const ts = topicsBySubject[s.id] || [];
         j.topic_tree = ts.map((t) => serializeTopicWithSubtopics(t));
-        j.grading_bands = bandsBySubject[s.id] || [];
         return j;
       });
 

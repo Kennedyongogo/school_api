@@ -6,8 +6,6 @@ const {
   ExamSubmission,
   ExamAnswer,
   ExamAttempt,
-  StudentAnswer,
-  TemporaryAnswer,
   ExamSessionLog,
   StudentExamResult,
   ExamSchedule,
@@ -971,8 +969,6 @@ exports.deleteExam = async (req, res) => {
 
     if (questionIds.length) {
       await ExamAnswer.destroy({ where: { question_id: questionIds }, transaction: tx });
-      await StudentAnswer.destroy({ where: { question_id: questionIds }, transaction: tx });
-      await TemporaryAnswer.destroy({ where: { question_id: questionIds }, transaction: tx });
       await ExamSessionLog.destroy({ where: { question_id: questionIds }, transaction: tx });
     }
 
@@ -985,8 +981,6 @@ exports.deleteExam = async (req, res) => {
       const attempts = await ExamAttempt.findAll({ where: { id: attemptIds }, attributes: ['exam_id'], transaction: tx });
       const examIds = attempts.map(a => a.exam_id);
       await StudentExamResult.destroy({ where: { exam_id: { [Op.in]: examIds } }, transaction: tx });
-      await StudentAnswer.destroy({ where: { exam_attempt_id: attemptIds }, transaction: tx });
-      await TemporaryAnswer.destroy({ where: { exam_attempt_id: attemptIds }, transaction: tx });
       await ExamSessionLog.destroy({ where: { exam_attempt_id: attemptIds }, transaction: tx });
       await ExamAttempt.destroy({ where: { id: attemptIds }, transaction: tx });
     }

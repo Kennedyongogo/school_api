@@ -5,16 +5,11 @@ const {
   CurriculumSubject,
   CurriculumSubjectTopic,
   CurriculumSubjectSubtopic,
-  CurriculumSubjectGradingBand,
-  Subject,
 } = require("../models");
 const { serializeTopicWithSubtopics } = require("../utils/curriculumTopicTree");
 
-const catalogAttrs = ["id", "name", "code", "department_id", "credit_hours", "is_elective"];
-
 /** Default eager-load graph for curriculum subject API responses */
 const subjectDetailIncludes = [
-  { model: Subject, as: "catalog_subject", attributes: catalogAttrs, required: false },
   { model: CurriculumClass, as: "curriculum_class", required: false },
   {
     model: CurriculumClassLevel,
@@ -559,8 +554,6 @@ exports.getCurriculumSubject = async (req, res) => {
   try {
     const row = await subjectInCurriculumOr404(req.params.curriculumId, req.params.subjectId);
     const includeTopics = req.query.include_topics === "true" || req.query.include === "all";
-    const includeBands = req.query.include_grading_bands === "true" || req.query.include === "all";
-
     const data = row.toJSON();
     if (includeTopics) {
       const topics = await CurriculumSubjectTopic.findAll({
@@ -572,15 +565,6 @@ exports.getCurriculumSubject = async (req, res) => {
         ],
       });
       data.topic_tree = topics.map((t) => serializeTopicWithSubtopics(t));
-    }
-    if (includeBands) {
-      data.grading_bands = await CurriculumSubjectGradingBand.findAll({
-        where: { curriculum_subject_id: row.id },
-        order: [
-          ["order_index", "ASC"],
-          ["label", "ASC"],
-        ],
-      });
     }
     return res.json({ success: true, data });
   } catch (error) {
@@ -910,123 +894,6 @@ exports.deleteCurriculumSubjectSubtopic = async (req, res) => {
       where: { id: req.params.subtopicId, curriculum_subject_topic_id: topic.id },
     });
     if (!row) return res.status(404).json({ success: false, message: "Subtopic not found" });
-    await row.destroy();
-    return res.json({ success: true, message: "Deleted" });
-  } catch (error) {
-    return handleErr(res, error);
-  }
-};
-
-/* ---------- Grading bands ---------- */
-
-exports.listCurriculumSubjectGradingBands = async (req, res) => {
-  try {
-    await subjectInCurriculumOr404(req.params.curriculumId, req.params.subjectId);
-    const rows = await CurriculumSubjectGradingBand.findAll({
-      where: { curriculum_subject_id: req.params.subjectId },
-      order: [
-        ["order_index", "ASC"],
-        ["label", "ASC"],
-      ],
-    });
-    return res.json({ success: true, data: rows });
-  } catch (error) {
-    return handleErr(res, error);
-  }
-};
-
-exports.createCurriculumSubjectGradingBand = async (req, res) => {
-  try {
-    const parentSubject = await subjectInCurriculumOr404(req.params.curriculumId, req.params.subjectId);
-    const allowed = [
-      "label",
-      "short_code",
-      "min_percentage",
-      "max_percentage",
-      "min_raw_score",
-      "max_raw_score",
-      "gpa_points",
-      "weight",
-      "narrative",
-      "order_index",
-      "is_passing_grade",
-      "is_active",
-    ];
-    const payload = { curriculum_subject_id: parentSubject.id };
-    for (const k of allowed) {
-      if (req.body[k] !== undefined) payload[k] = req.body[k];
-    }
-    if (!payload.label) {
-      return res.status(400).json({ success: false, message: "label is required" });
-    }
-    const row = await CurriculumSubjectGradingBand.create(payload);
-    return res.status(201).json({ success: true, data: row });
-  } catch (error) {
-    return handleErr(res, error);
-  }
-};
-
-exports.getCurriculumSubjectGradingBand = async (req, res) => {
-  try {
-    await subjectInCurriculumOr404(req.params.curriculumId, req.params.subjectId);
-    const row = await CurriculumSubjectGradingBand.findOne({
-      where: {
-        id: req.params.bandId,
-        curriculum_subject_id: req.params.subjectId,
-      },
-    });
-    if (!row) return res.status(404).json({ success: false, message: "Grading band not found" });
-    return res.json({ success: true, data: row });
-  } catch (error) {
-    return handleErr(res, error);
-  }
-};
-
-exports.updateCurriculumSubjectGradingBand = async (req, res) => {
-  try {
-    await subjectInCurriculumOr404(req.params.curriculumId, req.params.subjectId);
-    const row = await CurriculumSubjectGradingBand.findOne({
-      where: {
-        id: req.params.bandId,
-        curriculum_subject_id: req.params.subjectId,
-      },
-    });
-    if (!row) return res.status(404).json({ success: false, message: "Grading band not found" });
-    const allowed = [
-      "label",
-      "short_code",
-      "min_percentage",
-      "max_percentage",
-      "min_raw_score",
-      "max_raw_score",
-      "gpa_points",
-      "weight",
-      "narrative",
-      "order_index",
-      "is_passing_grade",
-      "is_active",
-    ];
-    const patch = {};
-    for (const k of allowed) {
-      if (req.body[k] !== undefined) patch[k] = req.body[k];
-    }
-    await row.update(patch);
-    return res.json({ success: true, data: row });
-  } catch (error) {
-    return handleErr(res, error);
-  }
-};
-
-exports.deleteCurriculumSubjectGradingBand = async (req, res) => {
-  try {
-    await subjectInCurriculumOr404(req.params.curriculumId, req.params.subjectId);
-    const row = await CurriculumSubjectGradingBand.findOne({
-      where: {
-        id: req.params.bandId,
-        curriculum_subject_id: req.params.subjectId,
-      },
-    });
-    if (!row) return res.status(404).json({ success: false, message: "Grading band not found" });
     await row.destroy();
     return res.json({ success: true, message: "Deleted" });
   } catch (error) {

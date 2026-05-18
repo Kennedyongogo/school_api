@@ -6,8 +6,6 @@ const {
   Teacher,
   Curriculum,
   CurriculumClass,
-  Enrollment,
-  Section,
 } = require("../models");
 const { normalizeEmail, normalizeUsername, duplicateUserWhere } = require("../utils/userIdentity");
 const { convertToRelativePath } = require("../utils/filePath");
@@ -474,13 +472,6 @@ exports.deleteStudent = async (req, res) => {
     }
     const userId = student.user_id;
     const picPath = student.profile_picture;
-
-    const enrollments = await Enrollment.findAll({ where: { student_id: student.id }, transaction: t });
-    for (const en of enrollments) {
-      const section = await Section.findByPk(en.section_id, { transaction: t });
-      await en.destroy({ transaction: t });
-      if (section && en.is_active) await section.decrement("current_enrollment", { transaction: t });
-    }
 
     await student.destroy({ transaction: t });
 

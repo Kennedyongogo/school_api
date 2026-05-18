@@ -7,7 +7,6 @@ const {
   CurriculumClassTimetable,
   CurriculumClassTimetableLesson,
   CurriculumSubject,
-  AcademicYear,
   Teacher,
   User,
   TeacherCurriculumSubject,
@@ -38,7 +37,6 @@ const lessonInclude = [
   },
 ];
 
-const academicYearInclude = { model: AcademicYear, as: "academic_year", required: false };
 const curriculumClassLevelInclude = {
   model: CurriculumClassLevel,
   as: "curriculum_class_level",
@@ -46,7 +44,7 @@ const curriculumClassLevelInclude = {
   attributes: ["id", "name", "level_order", "curriculum_class_id"],
 };
 
-const timetableIncludesBase = [academicYearInclude, curriculumClassLevelInclude];
+const timetableIncludesBase = [curriculumClassLevelInclude];
 
 const timetableLessonsInclude = {
   model: CurriculumClassTimetableLesson,
@@ -546,20 +544,12 @@ exports.createCurriculumClassTimetable = async (req, res) => {
       });
     }
 
-    let ayId = ayBody;
-    if (ayId) {
-      const ay = await AcademicYear.findByPk(ayId);
-      if (!ay) {
-        return res.status(400).json({ success: false, message: "Invalid academic_year_id" });
-      }
-    } else {
-      ayId = null;
-    }
+    const ayId = ayBody || null;
 
     const row = await CurriculumClassTimetable.create({
       curriculum_class_id: classId,
       curriculum_class_level_id: levelId,
-      academic_year_id: ayId || null,
+      academic_year_id: ayId,
       name: name ?? null,
       is_active: is_active !== undefined ? !!is_active : true,
     });
@@ -622,15 +612,10 @@ exports.updateCurriculumClassTimetable = async (req, res) => {
     }
 
     if (req.body.academic_year_id !== undefined) {
-      if (req.body.academic_year_id === null || req.body.academic_year_id === "") {
-        patch.academic_year_id = null;
-      } else {
-        const ay = await AcademicYear.findByPk(req.body.academic_year_id);
-        if (!ay) {
-          return res.status(400).json({ success: false, message: "Invalid academic_year_id" });
-        }
-        patch.academic_year_id = req.body.academic_year_id;
-      }
+      patch.academic_year_id =
+        req.body.academic_year_id === null || req.body.academic_year_id === ""
+          ? null
+          : req.body.academic_year_id;
     }
     await timetable.update(patch);
     const updated = await CurriculumClassTimetable.findByPk(timetable.id, {
