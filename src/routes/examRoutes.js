@@ -13,6 +13,7 @@ const {
   createExamSubmission,
   getMyExamSubmission,
   saveSubmissionAnswers,
+  uploadSubmissionAnswerFile,
   submitExamSubmission,
   listExamSubmissionsForMarking,
   markExamSubmission,
@@ -21,7 +22,7 @@ const {
 } = require("../controllers/examController");
 const { authenticateUser, authorizeRoles } = require("../middleware/auth");
 const { errorHandler } = require("../middleware/errorHandler");
-const { uploadDocument, handleUploadError } = require("../middleware/upload");
+const { uploadDocument, uploadExamAnswerFile, handleUploadError } = require("../middleware/upload");
 
 const { STAFF_ROLES, ADMIN_PORTAL_API_ROLES, SCHOOL_ADMIN_ROLES } = require("../constants/userRoles");
 const TEACH_OR_STAFF = [...STAFF_ROLES, "teacher"];
@@ -57,6 +58,14 @@ router.put("/:id/submissions/:submissionId/mark", authenticateUser, authorizeRol
 router.put("/:id/submissions/:submissionId/answers/:answerId/mark", authenticateUser, authorizeRoles(TEACH_OR_STAFF), markExamAnswer);
 router.post("/:id/submissions/cleanup-stale-drafts", authenticateUser, authorizeRoles(SCHOOL_ADMIN_ROLES), cleanupExamStaleDraftSubmissions);
 router.put("/submissions/:submissionId/answers", authenticateUser, authorizeRoles(["student"]), saveSubmissionAnswers);
+router.post(
+  "/submissions/:submissionId/answers/:questionId/upload",
+  authenticateUser,
+  authorizeRoles(["student"]),
+  uploadExamAnswerFile,
+  handleUploadError,
+  uploadSubmissionAnswerFile
+);
 router.put("/submissions/:submissionId/submit", authenticateUser, authorizeRoles(["student"]), submitExamSubmission);
 
 router.use(errorHandler);

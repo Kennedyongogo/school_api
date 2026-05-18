@@ -27,7 +27,8 @@ module.exports = (sequelize) => {
           "short_text",
           "long_text",
           "number",
-          "diagram_label"
+          "diagram_label",
+          "file_upload"
         ),
         allowNull: false,
       },

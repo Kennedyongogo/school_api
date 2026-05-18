@@ -62,6 +62,7 @@ const LiveClassChat = require("./liveClassChat")(sequelize);
 const LiveClassHandRaise = require("./liveClassHandRaise")(sequelize);
 const LiveClassReaction = require("./liveClassReaction")(sequelize);
 const LiveClassLobbyEntry = require("./liveClassLobbyEntry")(sequelize);
+const ExamScheduleLobbyEntry = require("./examScheduleLobbyEntry")(sequelize);
 const InAppNotification = require("./inAppNotification")(sequelize);
 const SchoolProfile = require("./schoolProfile")(sequelize);
 const ExamTemplate = require("./examTemplate")(sequelize);
@@ -122,6 +123,7 @@ const models = {
   LiveClassHandRaise,
   LiveClassReaction,
   LiveClassLobbyEntry,
+  ExamScheduleLobbyEntry,
   InAppNotification,
   SchoolProfile,
   ExamTemplate,
@@ -183,6 +185,7 @@ const initializeModels = async () => {
     await LiveClassHandRaise.sync({ force: false, alter: false });
     await LiveClassReaction.sync({ force: false, alter: false });
     await LiveClassLobbyEntry.sync({ force: false, alter: false });
+    await ExamScheduleLobbyEntry.sync({ force: false, alter: false });
     console.log("✅ All models synced successfully");
   } catch (error) {
     console.error("❌ Error syncing models:", error);
@@ -304,6 +307,19 @@ const setupAssociations = () => {
       as: "exam_attempts",
     });
     ExamAttempt.belongsTo(Student, { foreignKey: "student_id", as: "student" });
+
+    ExamSchedule.hasMany(ExamScheduleLobbyEntry, {
+      foreignKey: "exam_schedule_id",
+      as: "lobby_entries",
+    });
+    ExamScheduleLobbyEntry.belongsTo(ExamSchedule, {
+      foreignKey: "exam_schedule_id",
+      as: "exam_schedule",
+    });
+    ExamScheduleLobbyEntry.belongsTo(User, { foreignKey: "user_id", as: "user" });
+    ExamScheduleLobbyEntry.belongsTo(Student, { foreignKey: "student_id", as: "student" });
+    ExamScheduleLobbyEntry.belongsTo(User, { foreignKey: "admitted_by", as: "admitted_by_user" });
+    ExamScheduleLobbyEntry.belongsTo(User, { foreignKey: "denied_by", as: "denied_by_user" });
 
     ExamSchedule.hasMany(ExamAttempt, {
       foreignKey: "exam_schedule_id",

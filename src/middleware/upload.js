@@ -81,6 +81,8 @@ const storage = multer.diskStorage({
       file.fieldname === "listing_images"
     ) {
       uploadPath = path.join(__dirname, "..", "..", "uploads", "marketplace-listings");
+    } else if (file.fieldname === "exam_answer_file") {
+      uploadPath = path.join(__dirname, "..", "..", "uploads", "exam-answers");
     } else {
       uploadPath = path.join(__dirname, "..", "..", "uploads", "misc");
     }
@@ -192,6 +194,9 @@ const uploadProfileImage = upload.single("profile_image");
 
 // Middleware for single document upload
 const uploadDocument = upload.single("document");
+
+// Student exam answer attachment (image / PDF / document)
+const uploadExamAnswerFile = upload.single("exam_answer_file");
 
 // Middleware for file upload (generic)
 const uploadFile = upload.single("file");
@@ -338,6 +343,7 @@ const getFileType = (mimetype) => {
 module.exports = {
   uploadProfileImage,
   uploadDocument,
+  uploadExamAnswerFile,
   uploadFile,
   uploadDocuments,
   uploadBlogImage,

@@ -86,6 +86,10 @@ module.exports = (sequelize) => {
         type: DataTypes.STRING(40),
         allowNull: true,
       },
+      meeting_id: {
+        type: DataTypes.STRING(128),
+        allowNull: true,
+      },
       meeting_join_url: {
         type: DataTypes.TEXT,
         allowNull: true,

@@ -190,7 +190,7 @@ exports.listMyStudentExamSchedules = async (req, res) => {
           include: [{ model: User, as: "user", ...userSafe }],
         },
       ],
-      order: [["start_time", "ASC"]],
+      order: [["start_time", "DESC"]],
     });
 
     const scheduleIds = rows.map((r) => r.id);
@@ -246,13 +246,27 @@ exports.listMyStudentExamSchedules = async (req, res) => {
         effective_prevent_tab_switch:
           r.prevent_tab_switch == null ? !!r?.exam?.prevent_tab_switch : !!r.prevent_tab_switch,
         meeting_provider: r.meeting_provider,
+        meeting_id: r.meeting_id,
         meeting_join_url: r.meeting_join_url,
-        exam_access_policy:
-          r.proctoring_rules_json &&
-          typeof r.proctoring_rules_json === "object" &&
-          r.proctoring_rules_json.exam_access_policy === "paper_plus_room_required"
-            ? "paper_plus_room_required"
-            : "paper_only",
+        video_mode:
+          String(r.meeting_provider || "").toLowerCase() === "livekit"
+            ? "livekit"
+            : String(r.meeting_provider || "").toLowerCase() === "webrtc"
+              ? "webrtc"
+              : "external",
+        exam_access_policy: (() => {
+          const fromRules =
+            r.proctoring_rules_json &&
+            typeof r.proctoring_rules_json === "object" &&
+            r.proctoring_rules_json.exam_access_policy === "paper_plus_room_required"
+              ? "paper_plus_room_required"
+              : "paper_only";
+          const provider = String(r.meeting_provider || "").toLowerCase();
+          if (fromRules === "paper_plus_room_required") return "paper_plus_room_required";
+          if (r.proctoring_mode === "live_monitor") return "paper_plus_room_required";
+          if (provider === "livekit" || r.meeting_id) return "paper_plus_room_required";
+          return "paper_only";
+        })(),
         curriculum: r.curriculum || null,
         curriculum_class: r.curriculum_class || null,
         curriculum_class_level: r.curriculum_class_level || null,

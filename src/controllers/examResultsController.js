@@ -1,6 +1,23 @@
 const { Op } = require("sequelize");
 const { Exam, ExamSubmission, ExamAttempt, ExamAnswer, StudentExamResult, CurriculumSubject, SubjectGradingScale, Student } = require("../models");
 
+/** Map grading scale band to DB columns (grade is VARCHAR(20) — store letter only, not a long sentence). */
+function gradeFieldsFromBand(band) {
+  if (!band) {
+    return { grade: null, grade_letter: null, grade_remarks: null, points: null };
+  }
+  const letter = band.grade != null ? String(band.grade).trim() : "";
+  const remarkParts = [];
+  if (band.remarks) remarkParts.push(String(band.remarks).trim());
+  if (band.points != null && band.points !== "") remarkParts.push(`${band.points} points`);
+  return {
+    grade: letter ? letter.slice(0, 20) : null,
+    grade_letter: letter ? letter.slice(0, 5) : null,
+    grade_remarks: remarkParts.length ? remarkParts.join(" · ") : null,
+    points: band.points != null ? band.points : null,
+  };
+}
+
 async function resolveSubjectBand({ curriculum_id, curriculum_class_id, curriculum_subject_id, marks }) {
   return SubjectGradingScale.findOne({
     where: {
@@ -51,12 +68,9 @@ exports.bulkUpsertExamResults = async (req, res) => {
         curriculum_subject_id,
         marks_obtained: marks,
         marks,
-        grade: band ? `${band.grade} (${band.remarks}) - ${band.points} points` : null,
-        grade_letter: band?.grade || null,
-        grade_remarks: band?.remarks || null,
+        ...gradeFieldsFromBand(band),
         graded_at: new Date(),
         graded_by: req.user?.id || null,
-        points: band?.points || null,
       };
       const existing = await StudentExamResult.findOne({
         where: { student_id, exam_id: exam.id, curriculum_subject_id },
@@ -126,12 +140,9 @@ exports.gradeExamSubmission = async (req, res) => {
       curriculum_subject_id,
       marks_obtained: Number(totalScore),
       marks: Number(totalScore),
-      grade: band ? `${band.grade} (${band.remarks}) - ${band.points} points` : null,
-      grade_letter: band?.grade || null,
-      grade_remarks: band?.remarks || null,
+      ...gradeFieldsFromBand(band),
       graded_at: new Date(),
       graded_by: req.user?.id || null,
-      points: band?.points || null,
     };
     const existing = await StudentExamResult.findOne({
       where: { student_id: submission.student_id, exam_id: exam.id, curriculum_subject_id },
@@ -174,12 +185,9 @@ exports.updateExamResultMarks = async (req, res) => {
       curriculum_subject_id: cs.id,
       marks_obtained: marks,
       marks,
-      grade: band ? `${band.grade} (${band.remarks}) - ${band.points} points` : null,
-      grade_letter: band?.grade || null,
-      grade_remarks: band?.remarks || null,
+      ...gradeFieldsFromBand(band),
       graded_at: new Date(),
       graded_by: req.user?.id || null,
-      points: band?.points || null,
     });
     return res.json({ success: true, data: row });
   } catch (error) {

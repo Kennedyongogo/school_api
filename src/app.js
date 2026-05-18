@@ -72,6 +72,7 @@ const schoolLogosUploadPath = path.join(__dirname, "..", "uploads", "school-logo
 const teacherProfilesUploadPath = path.join(__dirname, "..", "uploads", "teacher-profiles");
 const studentProfilesUploadPath = path.join(__dirname, "..", "uploads", "student-profiles");
 const admissionDocumentsUploadPath = path.join(__dirname, "..", "uploads", "admission-documents");
+const examAnswersUploadPath = path.join(__dirname, "..", "uploads", "exam-answers");
 
 app.use("/uploads/profiles", express.static(profilesUploadPath));
 app.use("/uploads/documents", express.static(documentsUploadPath));
@@ -93,6 +94,7 @@ app.use("/uploads/school-logos", express.static(schoolLogosUploadPath));
 app.use("/uploads/teacher-profiles", cors(), express.static(teacherProfilesUploadPath));
 app.use("/uploads/student-profiles", cors(), express.static(studentProfilesUploadPath));
 app.use("/uploads/admission-documents", cors(), express.static(admissionDocumentsUploadPath));
+app.use("/uploads/exam-answers", cors(), express.static(examAnswersUploadPath));
 
 app.use("/api/users", userRoutes);
 app.use("/api/students", studentRoutes);

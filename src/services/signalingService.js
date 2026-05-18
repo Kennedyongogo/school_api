@@ -125,6 +125,14 @@ class SignalingService {
         if (!liveClassId) return;
         socket.leave(`live:${liveClassId}`);
       });
+      socket.on("join:exam-schedule", (examScheduleId) => {
+        if (!examScheduleId) return;
+        socket.join(`exam:${examScheduleId}`);
+      });
+      socket.on("leave:exam-schedule", (examScheduleId) => {
+        if (!examScheduleId) return;
+        socket.leave(`exam:${examScheduleId}`);
+      });
       socket.on("join:event", (eventId) => {
         if (!eventId) return;
         socket.join(`event:${eventId}`);

@@ -20,6 +20,12 @@ function buildMeetingId(lessonId) {
   return `lc-${hash}`;
 }
 
+function buildExamMeetingId(scheduleId) {
+  const salt = `exam:${scheduleId}:${Date.now()}:${crypto.randomBytes(6).toString("hex")}`;
+  const hash = crypto.createHash("sha256").update(salt).digest("hex").slice(0, 16);
+  return `ex-${hash}`;
+}
+
 function portalLiveClassUrl(liveClassId) {
   return `${portalBaseUrl()}/portal/live-class/${liveClassId}`;
 }
@@ -34,6 +40,42 @@ function portalLiveClassPath(liveClassId) {
 
 function adminLiveClassPath(liveClassId) {
   return `/live-class/${liveClassId}`;
+}
+
+function portalExamInvigilationUrl(scheduleId) {
+  return `${portalBaseUrl()}/portal/exam-schedule/${scheduleId}/invigilation`;
+}
+
+function adminExamLiveUrl(scheduleId) {
+  return `${adminBaseUrl()}/exam-schedule/${scheduleId}/live`;
+}
+
+function portalExamInvigilationPath(scheduleId) {
+  return `/portal/exam-schedule/${scheduleId}/invigilation`;
+}
+
+function adminExamLivePath(scheduleId) {
+  return `/exam-schedule/${scheduleId}/live`;
+}
+
+function provisionForExamSchedule(scheduleId, platform = "livekit") {
+  const meeting_id = buildExamMeetingId(scheduleId);
+  const p = String(platform || "livekit").trim().toLowerCase();
+  return {
+    meeting_id,
+    platform: p === "livekit" ? "livekit" : "webrtc",
+    join_url: "",
+    host_url: "",
+  };
+}
+
+function urlsForExamScheduleRow(scheduleId) {
+  return {
+    join_url: portalExamInvigilationUrl(scheduleId),
+    host_url: adminExamLiveUrl(scheduleId),
+    join_path: portalExamInvigilationPath(scheduleId),
+    host_path: adminExamLivePath(scheduleId),
+  };
 }
 
 /**
@@ -76,12 +118,19 @@ function socketRoomName(meetingId) {
 
 module.exports = {
   buildMeetingId,
+  buildExamMeetingId,
   provisionForLesson,
+  provisionForExamSchedule,
   urlsForLiveClassRow,
+  urlsForExamScheduleRow,
   portalLiveClassUrl,
   adminLiveClassUrl,
   portalLiveClassPath,
   adminLiveClassPath,
+  portalExamInvigilationUrl,
+  adminExamLiveUrl,
+  portalExamInvigilationPath,
+  adminExamLivePath,
   getIceServers,
   socketRoomName,
   portalBaseUrl,

@@ -14,6 +14,9 @@ const {
 } = require("../models");
 const { Op } = require("sequelize");
 const crypto = require("crypto");
+const webrtcRoomService = require("../services/webrtcRoomService");
+const { isInAppVideoPlatform, defaultOnlineMeetingMode } = require("../utils/meetingPlatform");
+const { isConfigured: liveKitConfigured } = require("../services/livekitService");
 
 const userSafe = { attributes: { exclude: ["password_hash"] } };
 
@@ -64,8 +67,10 @@ const addDaysIso = (isoDate, days) => {
 };
 
 function normalizePlatform(raw) {
-  const s = String(raw || "").trim().toLowerCase();
-  if (!s) return "jitsi";
+  const s = String(raw || "").trim().toLowerCase().replace(/-/g, "_");
+  if (!s) return "";
+  if (s === "livekit") return "livekit";
+  if (s === "webrtc") return "webrtc";
   if (s === "jitsi") return "jitsi";
   return "other";
 }
@@ -76,22 +81,60 @@ function jitsiRoomName(scheduleId) {
     .slice(0, 8)}`;
 }
 
-function resolveExamMeetingUrls(body, row) {
+function tryProvisionExamLiveKit(row) {
+  const mode = defaultOnlineMeetingMode();
+  if (mode !== "livekit" && mode !== "webrtc") return null;
+  if (mode === "livekit" && !liveKitConfigured()) return null;
+  if (!row?.id) return null;
+  const p = webrtcRoomService.provisionForExamSchedule(row.id, mode);
+  const links = webrtcRoomService.urlsForExamScheduleRow(row.id);
+  return {
+    meeting_provider: p.platform,
+    meeting_id: p.meeting_id,
+    meeting_join_url: links.join_url,
+    meeting_host_url: links.host_url,
+    generated: true,
+  };
+}
+
+function resolveExamMeetingUrls(body, row, options = {}) {
   const b = body && typeof body === "object" ? body : {};
   const joinFromBody = b.meeting_join_url != null ? String(b.meeting_join_url).trim() : "";
   const hostFromBody = b.meeting_host_url != null ? String(b.meeting_host_url).trim() : "";
   const platformFromBody = normalizePlatform(b.meeting_provider);
+  const preferLiveKit = options.preferLiveKit === true;
+
   if (joinFromBody) {
     return {
-      meeting_provider: platformFromBody,
+      meeting_provider: platformFromBody || "other",
+      meeting_id: b.meeting_id != null ? String(b.meeting_id).trim() : row?.meeting_id || null,
       meeting_join_url: joinFromBody,
       meeting_host_url: hostFromBody || joinFromBody,
       generated: false,
     };
   }
-  if (row?.meeting_join_url && String(row.meeting_join_url).trim() !== "") {
+
+  // On "go live" / initiate: upgrade stale Jitsi links to LiveKit when the server supports it.
+  if (preferLiveKit) {
+    const liveKitProvision = tryProvisionExamLiveKit(row);
+    if (liveKitProvision?.meeting_join_url) return liveKitProvision;
+  }
+
+  if (row?.meeting_id && isInAppVideoPlatform(row.meeting_provider)) {
+    const links = webrtcRoomService.urlsForExamScheduleRow(row.id);
     return {
       meeting_provider: normalizePlatform(row.meeting_provider),
+      meeting_id: String(row.meeting_id).trim(),
+      meeting_join_url: links.join_url,
+      meeting_host_url: links.host_url,
+      generated: false,
+    };
+  }
+
+  if (row?.meeting_join_url && String(row.meeting_join_url).trim() !== "" && !isInAppVideoPlatform(row.meeting_provider)) {
+    return {
+      meeting_provider: normalizePlatform(row.meeting_provider) || "jitsi",
+      meeting_id: row.meeting_id || null,
       meeting_join_url: String(row.meeting_join_url).trim(),
       meeting_host_url:
         row.meeting_host_url && String(row.meeting_host_url).trim() !== ""
@@ -101,11 +144,15 @@ function resolveExamMeetingUrls(body, row) {
     };
   }
 
+  const liveKitProvision = tryProvisionExamLiveKit(row);
+  if (liveKitProvision?.meeting_join_url) return liveKitProvision;
+
   const defaultJoin = process.env.ONLINE_MEETING_DEFAULT_JOIN_URL ? String(process.env.ONLINE_MEETING_DEFAULT_JOIN_URL).trim() : "";
   const defaultHost = process.env.ONLINE_MEETING_DEFAULT_HOST_URL ? String(process.env.ONLINE_MEETING_DEFAULT_HOST_URL).trim() : "";
   if (defaultJoin) {
     return {
       meeting_provider: platformFromBody || "other",
+      meeting_id: null,
       meeting_join_url: defaultJoin,
       meeting_host_url: defaultHost || defaultJoin,
       generated: false,
@@ -115,6 +162,7 @@ function resolveExamMeetingUrls(body, row) {
   if (process.env.JITSI_DISABLED === "1") {
     return {
       meeting_provider: platformFromBody || "other",
+      meeting_id: null,
       meeting_join_url: "",
       meeting_host_url: "",
       generated: false,
@@ -129,6 +177,7 @@ function resolveExamMeetingUrls(body, row) {
       : "exam";
   return {
     meeting_provider: "jitsi",
+    meeting_id: null,
     meeting_join_url: join,
     meeting_host_url: `${join}#config.prejoinPageEnabled=false&config.enableWelcomePage=false&userInfo.displayName=${hostName}`,
     generated: true,
@@ -160,6 +209,7 @@ const createSchedulePayload = (body, currentRow = null, userId = null) => {
   setIfDefined("proctoring_mode", source.proctoring_mode);
   setIfDefined("proctoring_rules_json", source.proctoring_rules_json);
   setIfDefined("meeting_provider", source.meeting_provider);
+  setIfDefined("meeting_id", source.meeting_id);
   setIfDefined("meeting_join_url", source.meeting_join_url);
   setIfDefined("meeting_host_url", source.meeting_host_url);
 
@@ -314,12 +364,15 @@ exports.initiateOnlineExamSchedule = async (req, res) => {
     if (row.status === "cancelled" || row.status === "completed") {
       return res.status(400).json({ success: false, message: `Cannot initiate a ${row.status} exam schedule` });
     }
-    const urls = resolveExamMeetingUrls(req.body, row);
+    const urls = resolveExamMeetingUrls(req.body, row, { preferLiveKit: true });
     if (!urls.meeting_join_url) {
+      const liveKitHint = liveKitConfigured()
+        ? ""
+        : " LiveKit is not configured — set LIVEKIT_URL, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET.";
       return res.status(400).json({
         success: false,
         message:
-          "No meeting join URL available. Jitsi is used by default (remove JITSI_DISABLED if you disabled it). Otherwise set ONLINE_MEETING_DEFAULT_JOIN_URL (and optionally ONLINE_MEETING_DEFAULT_HOST_URL), or send meeting_join_url (and optionally meeting_host_url) in the request body.",
+          `No meeting URL available. Set ONLINE_MEETING_PLATFORM=livekit${liveKitHint} Or set ONLINE_MEETING_DEFAULT_JOIN_URL, or send meeting_join_url in the request body.`,
       });
     }
 
@@ -331,6 +384,7 @@ exports.initiateOnlineExamSchedule = async (req, res) => {
     patch.meeting_provider = urls.meeting_provider;
     patch.meeting_join_url = urls.meeting_join_url;
     patch.meeting_host_url = urls.meeting_host_url;
+    if (urls.meeting_id) patch.meeting_id = urls.meeting_id;
 
     await row.update(patch);
     const updated = await ExamSchedule.findByPk(row.id, { include: scheduleIncludes });

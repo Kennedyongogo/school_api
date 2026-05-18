@@ -14,6 +14,8 @@ const {
 } = require("../models");
 const axios = require("axios");
 const fs = require("fs");
+const path = require("path");
+const { convertToRelativePath } = require("../utils/filePath");
 const OpenAI = require("openai");
 const pdfParse = require("pdf-parse");
 const mammoth = require("mammoth");
@@ -26,7 +28,17 @@ const deepseekClient = new OpenAI({
 });
 
 const userSafe = { attributes: { exclude: ["password_hash"] } };
-const QUESTION_TYPES = new Set(["multiple_choice", "multi_select", "true_false", "essay", "short_text", "long_text", "number", "diagram_label"]);
+const QUESTION_TYPES = new Set([
+  "multiple_choice",
+  "multi_select",
+  "true_false",
+  "essay",
+  "short_text",
+  "long_text",
+  "number",
+  "diagram_label",
+  "file_upload",
+]);
 const EXAM_STATUS = new Set(["draft", "published", "archived"]);
 
 const examIncludes = [
@@ -75,6 +87,17 @@ const normalizeQuestion = (q, idx = 0) => {
         page: Number.isFinite(Number(diagramPositionSrc?.page)) ? Math.max(0, Number(diagramPositionSrc.page)) : 0,
       },
     };
+  }
+  if (question_type === "file_upload") {
+    const rawAccept = Array.isArray(q?.options?.accept) ? q.options.accept : null;
+    const accept =
+      rawAccept && rawAccept.length
+        ? rawAccept.map((a) => String(a).trim()).filter(Boolean)
+        : ["image/*", "application/pdf"];
+    const max_files = Math.min(5, Math.max(1, Number(q?.options?.max_files) || 1));
+    const max_size_mb = Math.min(25, Math.max(1, Number(q?.options?.max_size_mb) || 10));
+    const upload_hint = q?.options?.upload_hint != null ? String(q.options.upload_hint).trim() : "";
+    options = { accept, max_files, max_size_mb, upload_hint };
   }
   return {
     question_text,
@@ -132,11 +155,26 @@ const hasMeaningfulAnswer = (ans) => {
   if (json == null) return hasText;
   if (Array.isArray(json)) return hasText || json.length > 0;
   if (typeof json === "object") {
-    const vals = Object.values(json || {});
+    if (Array.isArray(json.files) && json.files.length > 0) return true;
+    const vals = Object.values(json || {}).filter((_, k) => k !== "files");
     return hasText || vals.some((v) => String(v ?? "").trim() !== "");
   }
   return hasText || String(json).trim() !== "";
 };
+
+function mimeMatchesAccept(mimetype, acceptList) {
+  const mime = String(mimetype || "").toLowerCase();
+  const list = Array.isArray(acceptList) ? acceptList : ["image/*", "application/pdf"];
+  return list.some((pattern) => {
+    const p = String(pattern || "").toLowerCase().trim();
+    if (!p) return false;
+    if (p.endsWith("/*")) {
+      const prefix = p.slice(0, -1);
+      return mime.startsWith(prefix);
+    }
+    return mime === p;
+  });
+}
 
 exports.generateDiagramImage = async (req, res) => {
   try {
@@ -1117,14 +1155,33 @@ exports.saveSubmissionAnswers = async (req, res) => {
     const answers = Array.isArray(req.body.answers) ? req.body.answers : [];
     for (const item of answers) {
       if (!item?.question_id) continue;
-      const payload = {
-        answer_text: item.answer_text != null ? String(item.answer_text) : null,
-        answer_json: item.answer_json !== undefined ? item.answer_json : null,
-      };
       const existing = await ExamAnswer.findOne({
         where: { submission_id: submission.id, question_id: item.question_id },
+        include: [{ model: ExamQuestion, as: "question", attributes: ["id", "question_type"] }],
         transaction: tx,
       });
+      const isFileUpload = existing?.question?.question_type === "file_upload";
+      const incomingJson = item.answer_json !== undefined ? item.answer_json : null;
+      const incomingHasFiles =
+        incomingJson &&
+        typeof incomingJson === "object" &&
+        Array.isArray(incomingJson.files) &&
+        incomingJson.files.length > 0;
+      const existingHasFiles =
+        existing?.answer_json &&
+        typeof existing.answer_json === "object" &&
+        Array.isArray(existing.answer_json.files) &&
+        existing.answer_json.files.length > 0;
+
+      let answer_json = incomingJson;
+      if (isFileUpload && !incomingHasFiles && existingHasFiles) {
+        answer_json = existing.answer_json;
+      }
+
+      const payload = {
+        answer_text: item.answer_text != null ? String(item.answer_text) : null,
+        answer_json,
+      };
       if (existing) await existing.update(payload, { transaction: tx });
       else await ExamAnswer.create({ submission_id: submission.id, question_id: item.question_id, ...payload }, { transaction: tx });
     }
@@ -1133,6 +1190,97 @@ exports.saveSubmissionAnswers = async (req, res) => {
     return res.json({ success: true, data: updated });
   } catch (error) {
     await tx.rollback();
+    return res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+const rejectUploadedFile = async (req, res, status, message) => {
+  if (req.file?.path) await fs.promises.unlink(req.file.path).catch(() => {});
+  return res.status(status).json({ success: false, message });
+};
+
+/** Upload a file for a file_upload question (works alongside strict proctoring). */
+exports.uploadSubmissionAnswerFile = async (req, res) => {
+  try {
+    const student = await findStudentByUser(req.user?.id);
+    if (!student) return res.status(403).json({ success: false, message: "Student profile not found for this user." });
+    if (!req.file) return res.status(400).json({ success: false, message: "No file uploaded." });
+
+    const submission = await ExamSubmission.findByPk(req.params.submissionId, {
+      include: [{ model: Exam, as: "exam" }],
+    });
+    if (!submission) return rejectUploadedFile(req, res, 404, "Submission not found");
+    if (submission.student_id !== student.id) {
+      return rejectUploadedFile(req, res, 403, "You cannot edit this submission.");
+    }
+    if (submission.status !== "draft") {
+      return rejectUploadedFile(req, res, 400, "Submission already submitted.");
+    }
+
+    const questionId = req.params.questionId;
+    const question = await ExamQuestion.findOne({
+      where: { id: questionId, exam_id: submission.exam_id },
+    });
+    if (!question) return rejectUploadedFile(req, res, 404, "Question not found on this exam.");
+    if (question.question_type !== "file_upload") {
+      return rejectUploadedFile(req, res, 400, "This question does not accept file uploads.");
+    }
+
+    const opts = question.options && typeof question.options === "object" ? question.options : {};
+    const accept = Array.isArray(opts.accept) ? opts.accept : ["image/*", "application/pdf"];
+    const maxFiles = Math.min(5, Math.max(1, Number(opts.max_files) || 1));
+    const maxSizeMb = Math.min(25, Math.max(1, Number(opts.max_size_mb) || 10));
+
+    if (!mimeMatchesAccept(req.file.mimetype, accept)) {
+      return rejectUploadedFile(
+        req,
+        res,
+        400,
+        `File type not allowed. Accepted: ${accept.join(", ")}`
+      );
+    }
+    if (req.file.size > maxSizeMb * 1024 * 1024) {
+      return rejectUploadedFile(req, res, 400, `File exceeds maximum size of ${maxSizeMb} MB.`);
+    }
+
+    const relPath = convertToRelativePath(req.file.path);
+    const fileEntry = {
+      url: relPath,
+      name: req.file.originalname || path.basename(req.file.path),
+      mime: req.file.mimetype,
+      size: req.file.size,
+      uploaded_at: new Date().toISOString(),
+    };
+
+    let answer = await ExamAnswer.findOne({
+      where: { submission_id: submission.id, question_id: questionId },
+    });
+    const prevJson =
+      answer?.answer_json && typeof answer.answer_json === "object" && !Array.isArray(answer.answer_json)
+        ? answer.answer_json
+        : {};
+    const prevFiles = Array.isArray(prevJson.files) ? prevJson.files : [];
+    if (prevFiles.length >= maxFiles) {
+      return rejectUploadedFile(req, res, 400, `Maximum ${maxFiles} file(s) allowed for this question.`);
+    }
+    const nextJson = { ...prevJson, files: [...prevFiles, fileEntry] };
+
+    if (answer) {
+      await answer.update({ answer_json: nextJson, answer_text: null });
+    } else {
+      answer = await ExamAnswer.create({
+        submission_id: submission.id,
+        question_id: questionId,
+        answer_json: nextJson,
+        answer_text: null,
+      });
+    }
+
+    return res.json({ success: true, data: answer });
+  } catch (error) {
+    if (req.file?.path) {
+      fs.promises.unlink(req.file.path).catch(() => {});
+    }
     return res.status(400).json({ success: false, message: error.message });
   }
 };

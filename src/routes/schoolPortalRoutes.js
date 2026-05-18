@@ -36,6 +36,17 @@ const {
   listMyStudentExamSchedules,
   getMyStudentExamResult,
 } = require("../controllers/schoolPortalTimetableController");
+const { getExamScheduleLiveRoom } = require("../controllers/examScheduleLiveController");
+const { issueExamScheduleLiveKitToken } = require("../controllers/examScheduleLivekitTokenController");
+const {
+  getExamScheduleLobby,
+  getMyExamScheduleLobbyStatus,
+  requestExamScheduleLobbyJoin,
+  leaveExamScheduleLobby,
+  admitExamScheduleLobbyEntry,
+  denyExamScheduleLobbyEntry,
+  admitAllExamScheduleLobby,
+} = require("../controllers/examScheduleLobbyController");
 const { authorizeRoles } = require("../middleware/auth");
 
 router.get("/notifications", authenticateUser, listSchoolPortalNotifications);
@@ -63,6 +74,15 @@ router.post("/live-class/:id/lobby/admit-all", authenticateUser, admitAllLobby);
 router.get("/student/timetable-lessons", authenticateUser, authorizeRoles(["student"]), listMyStudentTimetableLessons);
 router.get("/student/exam-schedules", authenticateUser, authorizeRoles(["student"]), listMyStudentExamSchedules);
 router.get("/student/exam-results/:examScheduleId", authenticateUser, authorizeRoles(["student"]), getMyStudentExamResult);
+router.get("/exam-schedule/:id", authenticateUser, getExamScheduleLiveRoom);
+router.post("/exam-schedule/:id/livekit-token", authenticateUser, issueExamScheduleLiveKitToken);
+router.get("/exam-schedule/:id/lobby", authenticateUser, getExamScheduleLobby);
+router.get("/exam-schedule/:id/lobby/me", authenticateUser, getMyExamScheduleLobbyStatus);
+router.post("/exam-schedule/:id/lobby/join", authenticateUser, requestExamScheduleLobbyJoin);
+router.post("/exam-schedule/:id/lobby/leave", authenticateUser, leaveExamScheduleLobby);
+router.post("/exam-schedule/:id/lobby/:entryId/admit", authenticateUser, admitExamScheduleLobbyEntry);
+router.post("/exam-schedule/:id/lobby/:entryId/deny", authenticateUser, denyExamScheduleLobbyEntry);
+router.post("/exam-schedule/:id/lobby/admit-all", authenticateUser, admitAllExamScheduleLobby);
 
 router.use(errorHandler);
 
