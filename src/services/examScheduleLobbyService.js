@@ -1,4 +1,4 @@
-const { ExamScheduleLobbyEntry, ExamSchedule, Student, User } = require("../models");
+const { ExamScheduleLobbyEntry, Exam, Student, User } = require("../models");
 const { emitToExamSchedule, emitToUser } = require("./examScheduleRealtime");
 
 const userSafe = { attributes: { exclude: ["password_hash"] } };
@@ -16,7 +16,8 @@ function formatEntry(row) {
       : null;
   return {
     id: j.id,
-    exam_schedule_id: j.exam_schedule_id,
+    exam_id: j.exam_id,
+    exam_schedule_id: j.exam_id,
     user_id: j.user_id,
     student_id: j.student_id,
     status: j.status,
@@ -57,9 +58,9 @@ function buildStats(entries) {
   };
 }
 
-async function loadLobbyEntries(examScheduleId) {
+async function loadLobbyEntries(examId) {
   const rows = await ExamScheduleLobbyEntry.findAll({
-    where: { exam_schedule_id: examScheduleId },
+    where: { exam_id: examId },
     include: [
       { model: User, as: "user", ...userSafe },
       { model: Student, as: "student", attributes: ["id", "admission_number"] },
@@ -73,17 +74,20 @@ async function loadLobbyEntries(examScheduleId) {
   return rows.map(formatEntry);
 }
 
-async function markScheduleLiveIfNeeded(examScheduleId) {
-  const row = await ExamSchedule.findByPk(examScheduleId, { attributes: ["id", "status"] });
-  if (row?.status === "scheduled") {
-    await row.update({ status: "live" });
+async function markExamLiveIfNeeded(examId) {
+  const row = await Exam.findByPk(examId, { attributes: ["id", "session_status"] });
+  if (row?.session_status === "scheduled") {
+    await row.update({ session_status: "live" });
   }
 }
 
-async function broadcastLobby(examScheduleId) {
-  const entries = await loadLobbyEntries(examScheduleId);
+const markScheduleLiveIfNeeded = markExamLiveIfNeeded;
+
+async function broadcastLobby(examId) {
+  const entries = await loadLobbyEntries(examId);
   const payload = {
-    exam_schedule_id: examScheduleId,
+    exam_id: examId,
+    exam_schedule_id: examId,
     stats: buildStats(entries),
     waiting: entries.filter((e) => e.status === "waiting"),
     admitted: entries.filter((e) => e.status === "admitted"),
@@ -91,7 +95,7 @@ async function broadcastLobby(examScheduleId) {
     denied: entries.filter((e) => e.status === "denied"),
     all: entries,
   };
-  emitToExamSchedule(examScheduleId, "exam-lobby:update", payload);
+  emitToExamSchedule(examId, "exam-lobby:update", payload);
   return payload;
 }
 
@@ -99,6 +103,7 @@ module.exports = {
   formatEntry,
   buildStats,
   loadLobbyEntries,
+  markExamLiveIfNeeded,
   markScheduleLiveIfNeeded,
   broadcastLobby,
   emitToUser,

@@ -7,9 +7,9 @@ const entryIncludes = [
   { model: User, as: "admitted_by_user", ...userSafe, required: false },
 ];
 
-async function loadStudentLobbyEntries(examScheduleId, userId) {
+async function loadStudentLobbyEntries(examId, userId) {
   return ExamScheduleLobbyEntry.findAll({
-    where: { exam_schedule_id: examScheduleId, user_id: userId },
+    where: { exam_id: examId, user_id: userId },
     order: [
       ["requested_at", "DESC"],
       ["created_at", "DESC"],
@@ -18,7 +18,6 @@ async function loadStudentLobbyEntries(examScheduleId, userId) {
   });
 }
 
-/** Prefer active admission over a newer duplicate waiting row. */
 function resolveStudentLobbyView(entries) {
   if (!entries?.length) return { status: "none", entry: null };
 
@@ -38,13 +37,9 @@ function resolveStudentLobbyView(entries) {
   return { status: latest.status, entry: latest };
 }
 
-/**
- * One lobby row per student per exam — reuse/update instead of stacking duplicates.
- * @param {{ reset?: boolean }} options — when true, force back to waiting (new attempt from exam list).
- */
-async function ensureStudentLobbyJoin(examScheduleId, userId, studentId, options = {}) {
+async function ensureStudentLobbyJoin(examId, userId, studentId, options = {}) {
   const { reset = false } = options;
-  const entries = await loadStudentLobbyEntries(examScheduleId, userId);
+  const entries = await loadStudentLobbyEntries(examId, userId);
   const view = resolveStudentLobbyView(entries);
 
   if (!reset && view.status === "admitted") {
@@ -72,7 +67,7 @@ async function ensureStudentLobbyJoin(examScheduleId, userId, studentId, options
   }
 
   const entry = await ExamScheduleLobbyEntry.create({
-    exam_schedule_id: examScheduleId,
+    exam_id: examId,
     user_id: userId,
     student_id: studentId,
     status: "waiting",

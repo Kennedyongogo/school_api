@@ -12,7 +12,6 @@ const {
   LiveClassAttendance,
   LiveClass,
   Student,
-  ExamSchedule,
   ExamAttempt,
   ExamSubmission,
 } = require("../models");
@@ -28,16 +27,16 @@ exports.getHrAttendanceOverview = async (req, res) => {
     }
 
     if (scope === "exams") {
-      const where = hasDateFilter
+      const examWhere = hasDateFilter
         ? {
             start_time: {
               [Op.between]: [new Date(`${dateRaw}T00:00:00.000Z`), new Date(`${dateRaw}T23:59:59.999Z`)],
             },
           }
-        : {};
+        : { start_time: { [Op.ne]: null } };
 
-      const teacherRows = await ExamSchedule.findAll({
-        where,
+      const teacherRows = await Exam.findAll({
+        where: examWhere,
         include: [
           { model: Curriculum, as: "curriculum", attributes: ["id", "name"] },
           { model: CurriculumClass, as: "curriculum_class", attributes: ["id", "name", "code"] },
@@ -49,7 +48,6 @@ exports.getHrAttendanceOverview = async (req, res) => {
             attributes: ["id"],
             include: [{ model: User, as: "user", attributes: ["id", "full_name", "username"] }],
           },
-          { model: Exam, as: "exam", attributes: ["id", "title"] },
         ],
         order: [["start_time", "DESC"]],
       });
@@ -57,14 +55,11 @@ exports.getHrAttendanceOverview = async (req, res) => {
       const attempts = await ExamAttempt.findAll({
         include: [
           {
-            model: ExamSchedule,
-            as: "exam_schedule",
+            model: Exam,
+            as: "exam",
             required: true,
-            where,
-            include: [
-              { model: Exam, as: "exam", attributes: ["id", "title"] },
-              { model: CurriculumClass, as: "curriculum_class", attributes: ["id", "name", "code"] },
-            ],
+            where: examWhere,
+            include: [{ model: CurriculumClass, as: "curriculum_class", attributes: ["id", "name", "code"] }],
           },
           {
             model: Student,
@@ -102,8 +97,9 @@ exports.getHrAttendanceOverview = async (req, res) => {
           date: hasDateFilter ? dateRaw : null,
           date_filtered: hasDateFilter,
           teacher_attendance: teacherRows.map((r) => ({
+            exam_id: r.id,
             exam_schedule_id: r.id,
-            exam: r.exam || null,
+            exam: { id: r.id, title: r.title },
             curriculum: r.curriculum || null,
             curriculum_class: r.curriculum_class || null,
             curriculum_class_level: r.curriculum_class_level || null,
@@ -111,7 +107,7 @@ exports.getHrAttendanceOverview = async (req, res) => {
             starts_at: r.start_time,
             ends_at: r.end_time,
             delivery_mode: "online",
-            teacher_attended: r.status === "live" || r.status === "completed",
+            teacher_attended: r.session_status === "live" || r.session_status === "completed",
             proctoring_mode: r.proctoring_mode,
           })),
           student_attendance: attempts.map((a) => ({
@@ -122,7 +118,8 @@ exports.getHrAttendanceOverview = async (req, res) => {
             duration_minutes: a.time_spent_seconds != null ? Math.round(Number(a.time_spent_seconds) / 60) : null,
             status: a.start_time || a.status === "completed" ? "Attended" : "Pending",
             lesson: null,
-            exam_schedule: a.exam_schedule || null,
+            exam: a.exam || null,
+            exam_schedule: a.exam || null,
           })),
           extra_submissions: submissions.length,
         },

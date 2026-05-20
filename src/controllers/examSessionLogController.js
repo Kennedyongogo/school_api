@@ -82,6 +82,20 @@ exports.createExamSessionLog = async (req, res) => {
     }
 
     const row = await ExamSessionLog.create(payload);
+    const patch = { last_activity_at: new Date() };
+    if (payload.event_type === "session_submit") {
+      patch.client_presence_active = false;
+    } else if (payload.event_type === "session_presence" || payload.event_type === "session_start") {
+      patch.client_presence_active = true;
+    }
+    if (payload.event_type === "violation_detected" && payload.event_data?.type === "tab_switch") {
+      patch.tab_switch_count = Number(attempt.tab_switch_count || 0) + 1;
+      patch.warning_count = Number(attempt.warning_count || 0) + 1;
+    }
+    if (payload.event_type === "warning_issued") {
+      patch.warning_count = Number(attempt.warning_count || 0) + 1;
+    }
+    await attempt.update(patch);
     return res.status(201).json({ success: true, data: row });
   } catch (error) {
     return res.status(400).json({ success: false, message: error.message });

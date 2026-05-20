@@ -8,7 +8,7 @@ const {
   ExamAttempt,
   ExamSessionLog,
   StudentExamResult,
-  ExamSchedule,
+  Teacher,
   Student,
   User,
 } = require("../models");
@@ -40,12 +40,126 @@ const QUESTION_TYPES = new Set([
   "file_upload",
 ]);
 const EXAM_STATUS = new Set(["draft", "published", "archived"]);
+const SESSION_STATUS = new Set(["scheduled", "live", "completed", "cancelled"]);
 
-const examIncludes = [
-  { model: ExamTemplate, as: "template", required: false },
-  { model: ExamQuestion, as: "questions" },
-  { model: User, as: "creator", required: false, ...userSafe },
-];
+const { examDetailIncludes, examListIncludes } = require("../utils/examIncludes");
+const { resolveExamMeetingUrls } = require("../utils/examMeeting");
+const {
+  applyProctoringToPayload,
+  normalizeMode,
+  usesActivityMonitor,
+  usesLiveKitInvigilation,
+} = require("../utils/examProctoring");
+const {
+  autoSubmitElapsedDraftIfNeeded,
+  buildStudentExamAccess,
+  syncProctoringAttemptWithSubmission,
+  logProctoringEvent,
+} = require("../utils/examSubmissionDuration");
+
+function meetingFieldsForProctoringMode(examRow, proctoringMode) {
+  const mode = normalizeMode(proctoringMode ?? examRow?.proctoring_mode);
+  if (usesLiveKitInvigilation(mode)) {
+    const urls = resolveExamMeetingUrls({}, examRow, { preferLiveKit: true });
+    if (urls.meeting_join_url) {
+      return {
+        meeting_provider: urls.meeting_provider,
+        meeting_id: urls.meeting_id,
+        meeting_join_url: urls.meeting_join_url,
+        meeting_host_url: urls.meeting_host_url,
+      };
+    }
+    return {};
+  }
+  if (usesActivityMonitor(mode)) {
+    return {
+      meeting_provider: null,
+      meeting_id: null,
+      meeting_join_url: null,
+      meeting_host_url: null,
+    };
+  }
+  return {};
+}
+
+async function ensureExamAttemptForProctoring(exam, studentId, submission = null) {
+  if (submission) {
+    return syncProctoringAttemptWithSubmission(exam, studentId, submission);
+  }
+  const mode = normalizeMode(exam?.proctoring_mode);
+  if (!usesActivityMonitor(mode)) return null;
+  const now = new Date();
+  let attempt = await ExamAttempt.findOne({
+    where: { exam_id: exam.id, student_id: studentId },
+    order: [["created_at", "DESC"]],
+  });
+  if (!attempt) {
+    attempt = await ExamAttempt.create({
+      exam_id: exam.id,
+      student_id: studentId,
+      status: "in_progress",
+      start_time: now,
+      last_activity_at: now,
+      client_presence_active: true,
+      webcam_enabled: false,
+    });
+    await logProctoringEvent(attempt, "session_start", { source: "portal_exam_start" });
+    return attempt;
+  }
+  if (!attempt.start_time || attempt.status === "pending") {
+    await attempt.update({
+      status: "in_progress",
+      start_time: attempt.start_time || now,
+      last_activity_at: now,
+      client_presence_active: true,
+    });
+    const startLog = await ExamSessionLog.findOne({
+      where: { exam_attempt_id: attempt.id, event_type: "session_start" },
+      attributes: ["id"],
+    });
+    if (!startLog) await logProctoringEvent(attempt, "session_start", { source: "portal_exam_start" });
+  }
+  return attempt;
+}
+
+const applySchedulingFields = (body, payload, isCreate, userId) => {
+  const src = body && typeof body === "object" ? body : {};
+  const set = (key, val) => {
+    if (val !== undefined) payload[key] = val;
+  };
+  set("teacher_id", src.teacher_id);
+  set("start_time", src.start_time);
+  set("end_time", src.end_time);
+  set("timezone", src.timezone);
+  set("is_active", src.is_active);
+  set("allow_late_join_minutes", src.allow_late_join_minutes);
+  set("proctoring_mode", src.proctoring_mode);
+  set("proctoring_rules_json", src.proctoring_rules_json);
+  set("meeting_provider", src.meeting_provider);
+  set("meeting_id", src.meeting_id);
+  set("meeting_join_url", src.meeting_join_url);
+  set("meeting_host_url", src.meeting_host_url);
+  if (src.max_attempts !== undefined) set("max_attempts", src.max_attempts);
+  if (src.requires_webcam !== undefined) set("requires_webcam", src.requires_webcam);
+  if (src.prevent_tab_switch !== undefined) set("prevent_tab_switch", src.prevent_tab_switch);
+  if (src.session_status !== undefined) {
+    const ss = String(src.session_status || "").trim();
+    if (ss === "" || ss === "null") payload.session_status = null;
+    else if (SESSION_STATUS.has(ss)) payload.session_status = ss;
+  }
+  if (isCreate) {
+    if (payload.timezone === undefined) payload.timezone = "Africa/Nairobi";
+    if (payload.allow_late_join_minutes === undefined) payload.allow_late_join_minutes = 10;
+    if (payload.proctoring_mode === undefined) payload.proctoring_mode = "record_only";
+    if (payload.is_active === undefined) payload.is_active = true;
+    if (payload.session_status === undefined && (payload.start_time || payload.teacher_id)) {
+      payload.session_status = "scheduled";
+    }
+    if (userId) payload.created_by = userId;
+  } else if (userId) {
+    payload.updated_by = userId;
+  }
+};
 
 const normalizeQuestion = (q, idx = 0) => {
   const question_type = String(q?.question_type || "short_text");
@@ -825,14 +939,34 @@ exports.listExams = async (req, res) => {
     const where = {};
     if (req.query.status) where.status = req.query.status;
     if (req.query.template_id) where.template_id = req.query.template_id;
+    if (req.query.session_status) where.session_status = req.query.session_status;
+    if (req.query.curriculum_id) where.curriculum_id = req.query.curriculum_id;
+    if (req.query.curriculum_class_id) where.curriculum_class_id = req.query.curriculum_class_id;
+    if (req.query.teacher_id) where.teacher_id = req.query.teacher_id;
+    if (req.query.is_active !== undefined) where.is_active = req.query.is_active === "true";
+    if (req.query.date && /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date))) {
+      const date = String(req.query.date);
+      where.start_time = {
+        [Op.between]: [new Date(`${date}T00:00:00.000Z`), new Date(`${date}T23:59:59.999Z`)],
+      };
+    }
+    if (req.user?.role === "teacher") {
+      const teacherProfile = await Teacher.findOne({ where: { user_id: req.user.id }, attributes: ["id"] });
+      if (!teacherProfile) {
+        return res.status(403).json({ success: false, message: "Teacher profile not found for this user." });
+      }
+      where.teacher_id = teacherProfile.id;
+    }
+
+    const include = req.query.full === "1" ? examDetailIncludes : examListIncludes;
 
     const result = await Exam.findAndCountAll({
       where,
-      include: examIncludes,
+      include,
       distinct: true,
       limit,
       offset,
-      order: [["created_at", "DESC"]],
+      order: req.query.date ? [["start_time", "ASC"]] : [["created_at", "DESC"]],
     });
     return res.json({
       success: true,
@@ -849,7 +983,7 @@ exports.listExams = async (req, res) => {
 
 exports.getExam = async (req, res) => {
   try {
-    const row = await Exam.findByPk(req.params.id, { include: examIncludes });
+    const row = await Exam.findByPk(req.params.id, { include: examDetailIncludes });
     if (!row) {
       return res.status(404).json({ success: false, message: "Exam not found" });
     }
@@ -877,35 +1011,41 @@ exports.createExam = async (req, res) => {
     if (!normalizedQuestions.length) throw new Error("At least one exam question is required.");
     const status = body.status && EXAM_STATUS.has(String(body.status)) ? String(body.status) : "draft";
 
-    const row = await Exam.create(
-      {
-        title,
-        description: body.description || null,
-        template_id: body.template_id,
-          curriculum_id: body.curriculum_id || null,
-          curriculum_class_id: body.curriculum_class_id || null,
-          curriculum_subject_id: body.curriculum_subject_id || null,
-          curriculum_class_level_id: body.curriculum_class_level_id || null,
-        total_marks: Number.isFinite(Number(body.total_marks)) ? Number(body.total_marks) : 0,
-        passing_marks: Number.isFinite(Number(body.passing_marks)) ? Number(body.passing_marks) : 0,
-        duration_minutes: Number(body.duration_minutes),
-        requires_webcam: Boolean(body.requires_webcam),
-        prevent_tab_switch: body.prevent_tab_switch === undefined ? true : Boolean(body.prevent_tab_switch),
-        allow_retake: Boolean(body.allow_retake),
-        max_attempts: Math.max(1, Number(body.max_attempts) || 1),
-        instructions: body.instructions || null,
-        exam_layout_json: normalizeExamLayout(body.exam_layout_json),
-        status,
-        created_by: req.user?.id || body.created_by || null,
-      },
-      { transaction: tx }
+    const createPayload = {
+      title,
+      description: body.description || null,
+      template_id: body.template_id,
+      curriculum_id: body.curriculum_id || null,
+      curriculum_class_id: body.curriculum_class_id || null,
+      curriculum_subject_id: body.curriculum_subject_id || null,
+      curriculum_class_level_id: body.curriculum_class_level_id || null,
+      total_marks: Number.isFinite(Number(body.total_marks)) ? Number(body.total_marks) : 0,
+      passing_marks: Number.isFinite(Number(body.passing_marks)) ? Number(body.passing_marks) : 0,
+      duration_minutes: Number(body.duration_minutes),
+      requires_webcam: Boolean(body.requires_webcam),
+      prevent_tab_switch: body.prevent_tab_switch === undefined ? true : Boolean(body.prevent_tab_switch),
+      allow_retake: Boolean(body.allow_retake),
+      max_attempts: Math.max(1, Number(body.max_attempts) || 1),
+      instructions: body.instructions || null,
+      exam_layout_json: normalizeExamLayout(body.exam_layout_json),
+      status,
+    };
+    applySchedulingFields(body, createPayload, true, req.user?.id || body.created_by || null);
+    applyProctoringToPayload(
+      { ...body, proctoring_mode: body.proctoring_mode || createPayload.proctoring_mode || "record_only" },
+      createPayload
     );
+    const row = await Exam.create(createPayload, { transaction: tx });
+    const meetingPatch = meetingFieldsForProctoringMode(row, row.proctoring_mode);
+    if (Object.keys(meetingPatch).length) {
+      await row.update(meetingPatch, { transaction: tx });
+    }
     await ExamQuestion.bulkCreate(
       normalizedQuestions.map((q) => ({ ...q, exam_id: row.id })),
       { transaction: tx }
     );
     await tx.commit();
-    const created = await Exam.findByPk(row.id, { include: examIncludes });
+    const created = await Exam.findByPk(row.id, { include: examDetailIncludes });
     return res.status(201).json({ success: true, data: created });
   } catch (error) {
     await tx.rollback();
@@ -938,6 +1078,19 @@ exports.updateExam = async (req, res) => {
       "exam_layout_json",
       "status",
       "created_by",
+      "teacher_id",
+      "start_time",
+      "end_time",
+      "timezone",
+      "session_status",
+      "is_active",
+      "allow_late_join_minutes",
+      "proctoring_mode",
+      "proctoring_rules_json",
+      "meeting_provider",
+      "meeting_id",
+      "meeting_join_url",
+      "meeting_host_url",
     ];
     const patch = {};
     for (const k of allowed) {
@@ -946,6 +1099,17 @@ exports.updateExam = async (req, res) => {
     if (patch.exam_layout_json !== undefined) {
       patch.exam_layout_json = normalizeExamLayout(patch.exam_layout_json);
     }
+    if (patch.session_status !== undefined) {
+      const ss = String(patch.session_status || "").trim();
+      if (ss === "" || ss === "null") patch.session_status = null;
+      else if (!SESSION_STATUS.has(ss)) delete patch.session_status;
+    }
+    patch.updated_by = req.user?.id || null;
+    if (req.body.proctoring_mode !== undefined) {
+      applyProctoringToPayload(req.body, patch);
+    }
+    const nextMode = patch.proctoring_mode ?? row.proctoring_mode;
+    Object.assign(patch, meetingFieldsForProctoringMode(row, nextMode));
     await row.update(patch);
     if (Array.isArray(req.body.questions)) {
       // Check if there are any submissions for this exam
@@ -967,7 +1131,7 @@ exports.updateExam = async (req, res) => {
         throw e;
       }
     }
-    const updated = await Exam.findByPk(row.id, { include: examIncludes });
+    const updated = await Exam.findByPk(row.id, { include: examDetailIncludes });
     return res.json({ success: true, data: updated });
   } catch (error) {
     return res.status(400).json({ success: false, message: error.message });
@@ -1023,7 +1187,6 @@ exports.deleteExam = async (req, res) => {
       await ExamAttempt.destroy({ where: { id: attemptIds }, transaction: tx });
     }
 
-    await ExamSchedule.destroy({ where: { exam_id: row.id }, transaction: tx });
     await ExamQuestion.destroy({ where: { exam_id: row.id }, transaction: tx });
     await row.destroy({ transaction: tx });
     await tx.commit();
@@ -1084,7 +1247,7 @@ exports.duplicateExam = async (req, res) => {
     );
 
     await tx.commit();
-    const created = await Exam.findByPk(duplicated.id, { include: examIncludes });
+    const created = await Exam.findByPk(duplicated.id, { include: examDetailIncludes });
     return res.status(201).json({ success: true, data: created });
   } catch (error) {
     await tx.rollback();
@@ -1117,7 +1280,18 @@ exports.createExamSubmission = async (req, res) => {
     });
     if (!submission) {
       submission = await ExamSubmission.create({ exam_id: exam.id, student_id: student.id, status: "draft", started_at: new Date() });
+    } else {
+      submission = await autoSubmitElapsedDraftIfNeeded(submission, exam, student.id);
+      submission = await ExamSubmission.findByPk(submission.id, { include: [{ model: ExamAnswer, as: "answers" }] });
+      if (submission?.status === "submitted") {
+        return res.status(409).json({
+          success: false,
+          message: "Your exam time has ended. Your saved answers were submitted automatically.",
+          code: "duration_elapsed_submitted",
+        });
+      }
     }
+    await ensureExamAttemptForProctoring(exam, student.id, submission);
     return res.status(201).json({ success: true, data: submission });
   } catch (error) {
     return res.status(400).json({ success: false, message: error.message });
@@ -1128,15 +1302,34 @@ exports.getMyExamSubmission = async (req, res) => {
   try {
     const student = await findStudentByUser(req.user?.id);
     if (!student) return res.status(403).json({ success: false, message: "Student profile not found for this user." });
-    const submission = await ExamSubmission.findOne({
+    const exam = await Exam.findByPk(req.params.id);
+    if (!exam) return res.status(404).json({ success: false, message: "Exam not found" });
+
+    let submission = await ExamSubmission.findOne({
       where: { exam_id: req.params.id, student_id: student.id },
       include: [
         { model: ExamAnswer, as: "answers", include: [{ model: ExamQuestion, as: "question" }] },
-        { model: Exam, as: "exam", include: examIncludes },
+        { model: Exam, as: "exam", include: examDetailIncludes },
       ],
       order: [["created_at", "DESC"], [{ model: ExamAnswer, as: "answers" }, "created_at", "ASC"]],
     });
-    return res.json({ success: true, data: submission });
+    if (submission?.status === "draft") {
+      submission = await autoSubmitElapsedDraftIfNeeded(submission, exam, student.id);
+      submission = await ExamSubmission.findOne({
+        where: { exam_id: req.params.id, student_id: student.id },
+        include: [
+          { model: ExamAnswer, as: "answers", include: [{ model: ExamQuestion, as: "question" }] },
+          { model: Exam, as: "exam", include: examDetailIncludes },
+        ],
+        order: [["created_at", "DESC"], [{ model: ExamAnswer, as: "answers" }, "created_at", "ASC"]],
+      });
+    }
+    const access = buildStudentExamAccess(exam, submission);
+    return res.json({
+      success: true,
+      data: submission,
+      access,
+    });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -1320,11 +1513,16 @@ exports.submitExamSubmission = async (req, res) => {
     const startedAt = submission.started_at ? new Date(submission.started_at).getTime() : Date.now();
     const elapsed = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
     const limitSeconds = Number(submission.exam?.duration_minutes || 0) * 60;
-    if (limitSeconds > 0 && elapsed > limitSeconds) {
+    const isTimeAutoSubmit = submitReason === "auto_submit_time_elapsed";
+    if (limitSeconds > 0 && elapsed > limitSeconds && !isTimeAutoSubmit) {
       return res.status(400).json({ success: false, message: "Exam time has elapsed." });
     }
 
-    await submission.update({ status: "submitted", submitted_at: new Date(), time_spent_seconds: elapsed });
+    const submittedAt = new Date();
+    await submission.update({ status: "submitted", submitted_at: submittedAt, time_spent_seconds: elapsed });
+    await syncProctoringAttemptWithSubmission(submission.exam, student.id, submission, {
+      submitReason,
+    });
     const updated = await ExamSubmission.findByPk(submission.id, { include: [{ model: ExamAnswer, as: "answers" }] });
     return res.json({ success: true, data: updated });
   } catch (error) {

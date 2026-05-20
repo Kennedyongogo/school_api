@@ -5,10 +5,10 @@ module.exports = (sequelize) => {
     "ExamScheduleLobbyEntry",
     {
       id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
-      exam_schedule_id: {
+      exam_id: {
         type: DataTypes.UUID,
         allowNull: false,
-        references: { model: "exam_schedules", key: "id" },
+        references: { model: "exams", key: "id" },
       },
       user_id: {
         type: DataTypes.UUID,
@@ -45,7 +45,7 @@ module.exports = (sequelize) => {
       tableName: "exam_schedule_lobby_entries",
       timestamps: true,
       underscored: true,
-      indexes: [{ fields: ["exam_schedule_id", "user_id"] }],
+      indexes: [{ fields: ["exam_id", "user_id"] }],
     }
   );
 };

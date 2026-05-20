@@ -8,6 +8,8 @@ const {
   isStaffRole,
 } = require("../services/examScheduleAccess");
 const { getExamScheduleJoinWindow } = require("../utils/examJoinWindow");
+const { resolveExamMeetingUrls } = require("../utils/examMeeting");
+const { usesLiveKitInvigilation } = require("../utils/examProctoring");
 
 exports.issueExamScheduleLiveKitToken = async (req, res) => {
   try {
@@ -19,8 +21,28 @@ exports.issueExamScheduleLiveKitToken = async (req, res) => {
     }
 
     const { id } = req.params;
-    const schedule = await loadExamScheduleForAccess(id);
+    let schedule = await loadExamScheduleForAccess(id);
     await assertCanAccessExamSchedule(req, schedule);
+
+    if (!usesLiveKitInvigilation(schedule.proctoring_mode)) {
+      return res.status(400).json({
+        success: false,
+        message: "This exam does not use live video invigilation.",
+      });
+    }
+
+    if (!schedule.meeting_id || String(schedule.meeting_provider || "").toLowerCase() !== "livekit") {
+      const urls = resolveExamMeetingUrls({}, schedule, { preferLiveKit: true });
+      if (urls.meeting_join_url) {
+        await schedule.update({
+          meeting_provider: urls.meeting_provider,
+          meeting_id: urls.meeting_id,
+          meeting_join_url: urls.meeting_join_url,
+          meeting_host_url: urls.meeting_host_url,
+        });
+        schedule = await loadExamScheduleForAccess(id);
+      }
+    }
 
     const platform = String(schedule.meeting_provider || "").toLowerCase();
     if (platform !== "livekit") {
@@ -34,7 +56,7 @@ exports.issueExamScheduleLiveKitToken = async (req, res) => {
     if (!roomName) {
       return res.status(400).json({
         success: false,
-        message: "This exam has no LiveKit room configured. Open meeting links from the timetable first.",
+        message: "LiveKit is not available for this exam. Ask your teacher to check server LiveKit settings.",
       });
     }
 
@@ -42,7 +64,7 @@ exports.issueExamScheduleLiveKitToken = async (req, res) => {
     const joinWindow = getExamScheduleJoinWindow({
       start_time: schedule.start_time,
       end_time: schedule.end_time,
-      status: schedule.status,
+      session_status: schedule.session_status,
       allow_late_join_minutes: schedule.allow_late_join_minutes,
       is_staff: staff,
     });
@@ -58,7 +80,7 @@ exports.issueExamScheduleLiveKitToken = async (req, res) => {
 
     if (req.user.role === "student") {
       const entry = await ExamScheduleLobbyEntry.findOne({
-        where: { exam_schedule_id: id, user_id: req.user.id },
+        where: { exam_id: id, user_id: req.user.id },
         order: [["requested_at", "DESC"]],
         attributes: ["status"],
       });
@@ -91,6 +113,7 @@ exports.issueExamScheduleLiveKitToken = async (req, res) => {
         token,
         url,
         room_name: roomName,
+        exam_id: schedule.id,
         exam_schedule_id: schedule.id,
         video_mode: isInAppVideoPlatform(platform) && platform === "livekit" ? "livekit" : "external",
       },

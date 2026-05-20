@@ -6,7 +6,6 @@ const Parent = require("./parent")(sequelize);
 const SchoolAdmin = require("./schoolAdmin")(sequelize);
 const Department = require("./department")(sequelize);
 const Exam = require("./exam")(sequelize);
-const ExamSchedule = require("./examSchedule")(sequelize);
 const ExamQuestion = require("./examQuestion")(sequelize);
 const ExamAttempt = require("./examAttempt")(sequelize);
 const ExamSubmission = require("./examSubmission")(sequelize);
@@ -75,7 +74,6 @@ const models = {
   SchoolAdmin,
   Department,
   Exam,
-  ExamSchedule,
   ExamQuestion,
   ExamAttempt,
   ExamSubmission,
@@ -129,9 +127,12 @@ const models = {
   ExamTemplate,
 };
 
+const { ensureUnifiedExamSchema } = require("../utils/ensureUnifiedExamSchema");
+
 const initializeModels = async () => {
   try {
     console.log("🔄 Creating/updating school system tables...");
+    await ensureUnifiedExamSchema();
     await User.sync({ force: false, alter: false });
     await Teacher.sync({ force: false, alter: false });
     await Student.sync({ force: false, alter: false });
@@ -143,8 +144,7 @@ const initializeModels = async () => {
     await AcademicTerm.sync({ force: false, alter: false });
     await SchoolProfile.sync({ force: false, alter: false });
     await ExamTemplate.sync({ force: false, alter: false });
-    await Exam.sync({ force: false, alter: false });
-    await ExamSchedule.sync({ force: false, alter: false });
+    await Exam.sync({ force: false, alter: true });
     await ExamQuestion.sync({ force: false, alter: false });
     await ExamSubmission.sync({ force: false, alter: false });
     await ExamAnswer.sync({ force: false, alter: false });
@@ -278,23 +278,8 @@ const setupAssociations = () => {
     CurriculumClassLevel.hasMany(Exam, { foreignKey: "curriculum_class_level_id", as: "exams" });
     Exam.belongsTo(CurriculumClassLevel, { foreignKey: "curriculum_class_level_id", as: "curriculum_class_level" });
 
-    Exam.hasMany(ExamSchedule, { foreignKey: "exam_id", as: "schedules" });
-    ExamSchedule.belongsTo(Exam, { foreignKey: "exam_id", as: "exam" });
-    Curriculum.hasMany(ExamSchedule, { foreignKey: "curriculum_id", as: "exam_schedules" });
-    ExamSchedule.belongsTo(Curriculum, { foreignKey: "curriculum_id", as: "curriculum" });
-    CurriculumClass.hasMany(ExamSchedule, { foreignKey: "curriculum_class_id", as: "exam_schedules" });
-    ExamSchedule.belongsTo(CurriculumClass, { foreignKey: "curriculum_class_id", as: "curriculum_class" });
-    CurriculumClassLevel.hasMany(ExamSchedule, { foreignKey: "curriculum_class_level_id", as: "exam_schedules" });
-    ExamSchedule.belongsTo(CurriculumClassLevel, { foreignKey: "curriculum_class_level_id", as: "curriculum_class_level" });
-
-    Teacher.hasMany(ExamSchedule, {
-      foreignKey: "teacher_id",
-      as: "exam_schedules",
-    });
-    ExamSchedule.belongsTo(Teacher, {
-      foreignKey: "teacher_id",
-      as: "teacher",
-    });
+    Teacher.hasMany(Exam, { foreignKey: "teacher_id", as: "invigilated_exams" });
+    Exam.belongsTo(Teacher, { foreignKey: "teacher_id", as: "teacher" });
 
     Exam.hasMany(ExamQuestion, { foreignKey: "exam_id", as: "questions" });
     ExamQuestion.belongsTo(Exam, { foreignKey: "exam_id", as: "exam" });
@@ -308,28 +293,18 @@ const setupAssociations = () => {
     });
     ExamAttempt.belongsTo(Student, { foreignKey: "student_id", as: "student" });
 
-    ExamSchedule.hasMany(ExamScheduleLobbyEntry, {
-      foreignKey: "exam_schedule_id",
+    Exam.hasMany(ExamScheduleLobbyEntry, {
+      foreignKey: "exam_id",
       as: "lobby_entries",
     });
-    ExamScheduleLobbyEntry.belongsTo(ExamSchedule, {
-      foreignKey: "exam_schedule_id",
-      as: "exam_schedule",
+    ExamScheduleLobbyEntry.belongsTo(Exam, {
+      foreignKey: "exam_id",
+      as: "exam",
     });
     ExamScheduleLobbyEntry.belongsTo(User, { foreignKey: "user_id", as: "user" });
     ExamScheduleLobbyEntry.belongsTo(Student, { foreignKey: "student_id", as: "student" });
     ExamScheduleLobbyEntry.belongsTo(User, { foreignKey: "admitted_by", as: "admitted_by_user" });
     ExamScheduleLobbyEntry.belongsTo(User, { foreignKey: "denied_by", as: "denied_by_user" });
-
-    ExamSchedule.hasMany(ExamAttempt, {
-      foreignKey: "exam_schedule_id",
-      as: "attempts",
-    });
-    ExamAttempt.belongsTo(ExamSchedule, {
-      foreignKey: "exam_schedule_id",
-      as: "exam_schedule",
-    });
-
 
 
 

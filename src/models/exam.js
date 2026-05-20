@@ -42,6 +42,65 @@ module.exports = (sequelize) => {
         allowNull: true,
         references: { model: "curriculum_class_levels", key: "id" },
       },
+      teacher_id: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        references: { model: "teachers", key: "id" },
+      },
+      start_time: {
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
+      end_time: {
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
+      timezone: {
+        type: DataTypes.STRING(64),
+        allowNull: false,
+        defaultValue: "Africa/Nairobi",
+      },
+      session_status: {
+        type: DataTypes.STRING(32),
+        allowNull: true,
+      },
+      is_active: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: true,
+      },
+      allow_late_join_minutes: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 10,
+      },
+      proctoring_mode: {
+        type: DataTypes.STRING(32),
+        allowNull: false,
+        defaultValue: "record_only",
+        validate: {
+          isIn: [["record_only", "live_monitor", "strict_auto"]],
+        },
+      },
+      proctoring_rules_json: {
+        type: DataTypes.JSONB,
+        allowNull: true,
+      },
+      meeting_provider: {
+        type: DataTypes.STRING(40),
+        allowNull: true,
+      },
+      meeting_id: {
+        type: DataTypes.STRING(128),
+        allowNull: true,
+      },
+      meeting_join_url: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
+      meeting_host_url: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
       exam_type: {
         type: DataTypes.STRING(50),
         allowNull: true,
@@ -90,6 +149,11 @@ module.exports = (sequelize) => {
         defaultValue: "draft",
       },
       created_by: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        references: { model: "users", key: "id" },
+      },
+      updated_by: {
         type: DataTypes.UUID,
         allowNull: true,
         references: { model: "users", key: "id" },

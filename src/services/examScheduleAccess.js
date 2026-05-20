@@ -1,4 +1,4 @@
-const { ExamSchedule, Student, Teacher } = require("../models");
+const { Exam, Student, Teacher } = require("../models");
 const { STAFF_ROLES, ADMIN_PORTAL_API_ROLES } = require("../constants/userRoles");
 
 const TEACH_OR_STAFF = [...STAFF_ROLES, "teacher"];
@@ -11,15 +11,16 @@ function isTeacherRole(req) {
   return req.user?.role === "teacher" || ADMIN_PORTAL_API_ROLES.includes(req.user?.role);
 }
 
-async function loadExamScheduleForAccess(scheduleId) {
-  return ExamSchedule.findByPk(scheduleId, {
+async function loadExamForAccess(examId) {
+  return Exam.findByPk(examId, {
     attributes: [
       "id",
-      "exam_id",
+      "title",
       "curriculum_class_id",
       "teacher_id",
       "start_time",
       "end_time",
+      "session_status",
       "status",
       "is_active",
       "allow_late_join_minutes",
@@ -28,26 +29,30 @@ async function loadExamScheduleForAccess(scheduleId) {
       "meeting_join_url",
       "meeting_host_url",
       "proctoring_mode",
+      "requires_webcam",
     ],
   });
 }
 
-async function assertCanAccessExamSchedule(req, schedule) {
-  if (!schedule) {
-    const err = new Error("Exam schedule not found.");
+/** @deprecated use loadExamForAccess */
+const loadExamScheduleForAccess = loadExamForAccess;
+
+async function assertCanAccessExam(req, exam) {
+  if (!exam) {
+    const err = new Error("Exam not found.");
     err.statusCode = 404;
     throw err;
   }
-  if (!schedule.is_active) {
-    const err = new Error("This exam schedule is inactive.");
+  if (!exam.is_active) {
+    const err = new Error("This exam is inactive.");
     err.statusCode = 400;
     throw err;
   }
   if (isStaffRole(req)) {
-    if (req.user?.role === "teacher" && schedule.teacher_id) {
+    if (req.user?.role === "teacher" && exam.teacher_id) {
       const teacher = await Teacher.findOne({ where: { user_id: req.user.id }, attributes: ["id"] });
-      if (teacher && String(schedule.teacher_id) !== String(teacher.id)) {
-        const err = new Error("Forbidden: this schedule is assigned to another invigilator.");
+      if (teacher && String(exam.teacher_id) !== String(teacher.id)) {
+        const err = new Error("Forbidden: this exam is assigned to another invigilator.");
         err.statusCode = 403;
         throw err;
       }
@@ -68,15 +73,20 @@ async function assertCanAccessExamSchedule(req, schedule) {
     err.statusCode = 404;
     throw err;
   }
-  if (!schedule.curriculum_class_id || String(student.curriculum_class_id) !== String(schedule.curriculum_class_id)) {
+  if (!exam.curriculum_class_id || String(student.curriculum_class_id) !== String(exam.curriculum_class_id)) {
     const err = new Error("You are not enrolled in the class for this exam.");
     err.statusCode = 403;
     throw err;
   }
 }
 
+/** @deprecated use assertCanAccessExam */
+const assertCanAccessExamSchedule = assertCanAccessExam;
+
 module.exports = {
+  loadExamForAccess,
   loadExamScheduleForAccess,
+  assertCanAccessExam,
   assertCanAccessExamSchedule,
   isStaffRole,
   isTeacherRole,

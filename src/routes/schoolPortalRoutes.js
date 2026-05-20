@@ -36,7 +36,7 @@ const {
   listMyStudentExamSchedules,
   getMyStudentExamResult,
 } = require("../controllers/schoolPortalTimetableController");
-const { getExamScheduleLiveRoom } = require("../controllers/examScheduleLiveController");
+const { getExamLiveRoom, getExamScheduleLiveRoom } = require("../controllers/examScheduleLiveController");
 const { issueExamScheduleLiveKitToken } = require("../controllers/examScheduleLivekitTokenController");
 const {
   getExamScheduleLobby,
@@ -72,8 +72,19 @@ router.post("/live-class/:id/lobby/:entryId/admit", authenticateUser, admitLobby
 router.post("/live-class/:id/lobby/:entryId/deny", authenticateUser, denyLobbyEntry);
 router.post("/live-class/:id/lobby/admit-all", authenticateUser, admitAllLobby);
 router.get("/student/timetable-lessons", authenticateUser, authorizeRoles(["student"]), listMyStudentTimetableLessons);
+router.get("/student/exams", authenticateUser, authorizeRoles(["student"]), listMyStudentExamSchedules);
 router.get("/student/exam-schedules", authenticateUser, authorizeRoles(["student"]), listMyStudentExamSchedules);
 router.get("/student/exam-results/:examScheduleId", authenticateUser, authorizeRoles(["student"]), getMyStudentExamResult);
+router.get("/student/exam-results/exam/:examId", authenticateUser, authorizeRoles(["student"]), getMyStudentExamResult);
+router.get("/exam/:id", authenticateUser, getExamLiveRoom);
+router.post("/exam/:id/livekit-token", authenticateUser, issueExamScheduleLiveKitToken);
+router.get("/exam/:id/lobby", authenticateUser, getExamScheduleLobby);
+router.get("/exam/:id/lobby/me", authenticateUser, getMyExamScheduleLobbyStatus);
+router.post("/exam/:id/lobby/join", authenticateUser, requestExamScheduleLobbyJoin);
+router.post("/exam/:id/lobby/leave", authenticateUser, leaveExamScheduleLobby);
+router.post("/exam/:id/lobby/:entryId/admit", authenticateUser, admitExamScheduleLobbyEntry);
+router.post("/exam/:id/lobby/:entryId/deny", authenticateUser, denyExamScheduleLobbyEntry);
+router.post("/exam/:id/lobby/admit-all", authenticateUser, admitAllExamScheduleLobby);
 router.get("/exam-schedule/:id", authenticateUser, getExamScheduleLiveRoom);
 router.post("/exam-schedule/:id/livekit-token", authenticateUser, issueExamScheduleLiveKitToken);
 router.get("/exam-schedule/:id/lobby", authenticateUser, getExamScheduleLobby);

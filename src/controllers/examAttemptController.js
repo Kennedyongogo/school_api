@@ -3,7 +3,6 @@ const {
   Exam,
   Student,
   User,
-  ExamSchedule,
   Curriculum,
   CurriculumClass,
   CurriculumClassLevel,
@@ -20,17 +19,21 @@ const attemptIncludes = [
   {
     model: Exam,
     as: "exam",
-    attributes: ["id", "title", "duration_minutes", "total_marks", "passing_marks", "status", "requires_webcam"],
-  },
-  {
-    model: Student,
-    as: "student",
-    include: [{ model: User, as: "user", ...userSafe }],
-  },
-  {
-    model: ExamSchedule,
-    as: "exam_schedule",
-    required: false,
+    attributes: [
+      "id",
+      "title",
+      "duration_minutes",
+      "total_marks",
+      "passing_marks",
+      "status",
+      "session_status",
+      "requires_webcam",
+      "start_time",
+      "end_time",
+      "teacher_id",
+      "curriculum_id",
+      "curriculum_class_id",
+    ],
     include: [
       { model: Curriculum, as: "curriculum", required: false, attributes: ["id", "name", "type"] },
       {
@@ -53,13 +56,18 @@ const attemptIncludes = [
       },
     ],
   },
+  {
+    model: Student,
+    as: "student",
+    include: [{ model: User, as: "user", ...userSafe }],
+  },
 ];
 
 exports.listExamAttempts = async (req, res) => {
   try {
     const where = {};
-    if (req.query.exam_id) where.exam_id = req.query.exam_id;
-    if (req.query.exam_schedule_id) where.exam_schedule_id = req.query.exam_schedule_id;
+    const examId = req.query.exam_id || req.query.exam_schedule_id;
+    if (examId) where.exam_id = examId;
     if (req.query.status) where.status = req.query.status;
 
     if (req.user.role === "student") {
@@ -109,7 +117,9 @@ exports.createExamAttempt = async (req, res) => {
         return res.status(403).json({ success: false, message: "Students may only create attempts for themselves" });
       }
     }
-    const row = await ExamAttempt.create(req.body);
+    const body = { ...req.body };
+    delete body.exam_schedule_id;
+    const row = await ExamAttempt.create(body);
     const created = await ExamAttempt.findByPk(row.id, { include: attemptIncludes });
     return res.status(201).json({ success: true, data: created });
   } catch (error) {
@@ -135,7 +145,6 @@ exports.updateExamAttempt = async (req, res) => {
     const allowed = [
       "exam_id",
       "student_id",
-      "exam_schedule_id",
       "start_time",
       "end_time",
       "time_spent_seconds",
@@ -148,11 +157,11 @@ exports.updateExamAttempt = async (req, res) => {
       "webcam_enabled",
       "tab_switch_count",
       "warning_count",
+      "last_activity_at",
+      "client_presence_active",
       "is_cancelled",
       "cancellation_reason",
       "submitted_at",
-      "last_activity_at",
-      "client_presence_active",
     ];
     const patch = {};
     for (const k of allowed) {

@@ -42,24 +42,24 @@ function adminLiveClassPath(liveClassId) {
   return `/live-class/${liveClassId}`;
 }
 
-function portalExamInvigilationUrl(scheduleId) {
-  return `${portalBaseUrl()}/portal/exam-schedule/${scheduleId}/invigilation`;
+function portalExamInvigilationUrl(examId) {
+  return `${portalBaseUrl()}/portal/exam/${examId}/invigilation`;
 }
 
-function adminExamLiveUrl(scheduleId) {
-  return `${adminBaseUrl()}/exam-schedule/${scheduleId}/live`;
+function adminExamLiveUrl(examId) {
+  return `${adminBaseUrl()}/exam/${examId}/live`;
 }
 
-function portalExamInvigilationPath(scheduleId) {
-  return `/portal/exam-schedule/${scheduleId}/invigilation`;
+function portalExamInvigilationPath(examId) {
+  return `/portal/exam/${examId}/invigilation`;
 }
 
-function adminExamLivePath(scheduleId) {
-  return `/exam-schedule/${scheduleId}/live`;
+function adminExamLivePath(examId) {
+  return `/exam/${examId}/live`;
 }
 
-function provisionForExamSchedule(scheduleId, platform = "livekit") {
-  const meeting_id = buildExamMeetingId(scheduleId);
+function provisionForExam(examId, platform = "livekit") {
+  const meeting_id = buildExamMeetingId(examId);
   const p = String(platform || "livekit").trim().toLowerCase();
   return {
     meeting_id,
@@ -69,14 +69,17 @@ function provisionForExamSchedule(scheduleId, platform = "livekit") {
   };
 }
 
-function urlsForExamScheduleRow(scheduleId) {
+function urlsForExamRow(examId) {
   return {
-    join_url: portalExamInvigilationUrl(scheduleId),
-    host_url: adminExamLiveUrl(scheduleId),
-    join_path: portalExamInvigilationPath(scheduleId),
-    host_path: adminExamLivePath(scheduleId),
+    join_url: portalExamInvigilationUrl(examId),
+    host_url: adminExamLiveUrl(examId),
+    join_path: portalExamInvigilationPath(examId),
+    host_path: adminExamLivePath(examId),
   };
 }
+
+const provisionForExamSchedule = provisionForExam;
+const urlsForExamScheduleRow = urlsForExamRow;
 
 /**
  * Provision WebRTC room metadata for a new live_classes row (URLs set after row id exists).
@@ -120,8 +123,10 @@ module.exports = {
   buildMeetingId,
   buildExamMeetingId,
   provisionForLesson,
+  provisionForExam,
   provisionForExamSchedule,
   urlsForLiveClassRow,
+  urlsForExamRow,
   urlsForExamScheduleRow,
   portalLiveClassUrl,
   adminLiveClassUrl,

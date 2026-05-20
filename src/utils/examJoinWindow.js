@@ -3,19 +3,21 @@ const EARLY_JOIN_MINUTES = 15;
 /**
  * @returns {{ can_join: boolean, reason: string|null, opens_at: string|null, closes_at: string|null }}
  */
-function getExamScheduleJoinWindow({
+function getExamJoinWindow({
   start_time,
   end_time,
+  session_status,
   status,
   allow_late_join_minutes = 10,
   is_staff = false,
   early_minutes = EARLY_JOIN_MINUTES,
 }) {
+  const lifecycle = session_status != null ? session_status : status;
   if (is_staff) {
     return { can_join: true, reason: null, opens_at: null, closes_at: null };
   }
 
-  if (status === "cancelled" || status === "completed") {
+  if (lifecycle === "cancelled" || lifecycle === "completed") {
     return {
       can_join: false,
       reason: "This exam session is not open.",
@@ -62,4 +64,7 @@ function getExamScheduleJoinWindow({
   };
 }
 
-module.exports = { getExamScheduleJoinWindow, EARLY_JOIN_MINUTES };
+/** @deprecated alias */
+const getExamScheduleJoinWindow = (opts) => getExamJoinWindow(opts);
+
+module.exports = { getExamJoinWindow, getExamScheduleJoinWindow, EARLY_JOIN_MINUTES };

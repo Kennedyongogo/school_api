@@ -19,11 +19,6 @@ module.exports = (sequelize) => {
         allowNull: false,
         references: { model: "students", key: "id" },
       },
-      exam_schedule_id: {
-        type: DataTypes.UUID,
-        allowNull: true,
-        references: { model: "exam_schedules", key: "id" },
-      },
       start_time: {
         type: DataTypes.DATE,
         allowNull: true,

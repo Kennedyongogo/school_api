@@ -1,29 +1,42 @@
-const { Exam } = require("../models");
 const webrtcRoomService = require("../services/webrtcRoomService");
 const { getLiveKitUrl, isConfigured: liveKitConfigured } = require("../services/livekitService");
 const { isInAppVideoPlatform } = require("../utils/meetingPlatform");
 const {
-  loadExamScheduleForAccess,
-  assertCanAccessExamSchedule,
+  loadExamForAccess,
+  assertCanAccessExam,
   isStaffRole,
 } = require("../services/examScheduleAccess");
-const { getExamScheduleJoinWindow } = require("../utils/examJoinWindow");
+const { getExamJoinWindow } = require("../utils/examJoinWindow");
+const { resolveExamMeetingUrls } = require("../utils/examMeeting");
+const { normalizeMode, usesLiveKitInvigilation } = require("../utils/examProctoring");
 
-const userSafe = { attributes: { exclude: ["password_hash"] } };
+async function ensureLiveKitMeetingForExam(exam) {
+  if (!usesLiveKitInvigilation(exam?.proctoring_mode)) return exam;
+  if (exam.meeting_id && String(exam.meeting_provider || "").toLowerCase() === "livekit") return exam;
+  const urls = resolveExamMeetingUrls({}, exam, { preferLiveKit: true });
+  if (!urls.meeting_join_url) return exam;
+  await exam.update({
+    meeting_provider: urls.meeting_provider,
+    meeting_id: urls.meeting_id,
+    meeting_join_url: urls.meeting_join_url,
+    meeting_host_url: urls.meeting_host_url,
+  });
+  return loadExamForAccess(exam.id);
+}
 
-exports.getExamScheduleLiveRoom = async (req, res) => {
+exports.getExamLiveRoom = async (req, res) => {
   try {
     const { id } = req.params;
-    const schedule = await loadExamScheduleForAccess(id);
-    await assertCanAccessExamSchedule(req, schedule);
+    let exam = await loadExamForAccess(id);
+    await assertCanAccessExam(req, exam);
+    exam = await ensureLiveKitMeetingForExam(exam);
 
-    const exam = await Exam.findByPk(schedule.exam_id, { attributes: ["id", "title", "requires_webcam"] });
     const staff = isStaffRole(req);
-    const joinWindow = getExamScheduleJoinWindow({
-      start_time: schedule.start_time,
-      end_time: schedule.end_time,
-      status: schedule.status,
-      allow_late_join_minutes: schedule.allow_late_join_minutes,
+    const joinWindow = getExamJoinWindow({
+      start_time: exam.start_time,
+      end_time: exam.end_time,
+      session_status: exam.session_status,
+      allow_late_join_minutes: exam.allow_late_join_minutes,
       is_staff: staff,
     });
 
@@ -35,19 +48,20 @@ exports.getExamScheduleLiveRoom = async (req, res) => {
       });
     }
 
-    const platform = String(schedule.meeting_provider || "").toLowerCase();
+    const platform = String(exam.meeting_provider || "").toLowerCase();
     const role = staff ? "teacher" : "student";
 
     return res.json({
       success: true,
       data: {
-        exam_schedule_id: schedule.id,
-        exam_id: schedule.exam_id,
-        exam_title: exam?.title || "Exam",
-        meeting_id: schedule.meeting_id,
+        exam_id: exam.id,
+        exam_schedule_id: exam.id,
+        exam_title: exam.title || "Exam",
+        meeting_id: exam.meeting_id,
         platform,
-        status: schedule.status,
-        proctoring_mode: schedule.proctoring_mode,
+        session_status: exam.session_status,
+        status: exam.session_status,
+        proctoring_mode: exam.proctoring_mode,
         can_join: joinWindow.can_join,
         join_blocked_reason: joinWindow.reason,
         join_opens_at: joinWindow.opens_at,
@@ -61,10 +75,10 @@ exports.getExamScheduleLiveRoom = async (req, res) => {
             : isInAppVideoPlatform(platform)
               ? "webrtc"
               : "external",
-        media_mode: schedule.requires_webcam === false ? "optional" : "video",
+        media_mode: exam.requires_webcam === false ? "optional" : "video",
         role,
-        join_path: webrtcRoomService.portalExamInvigilationPath(schedule.id),
-        host_path: webrtcRoomService.adminExamLivePath(schedule.id),
+        join_path: webrtcRoomService.portalExamInvigilationPath(exam.id),
+        host_path: webrtcRoomService.adminExamLivePath(exam.id),
       },
     });
   } catch (error) {
@@ -72,3 +86,6 @@ exports.getExamScheduleLiveRoom = async (req, res) => {
     return res.status(code).json({ success: false, message: error.message });
   }
 };
+
+/** @deprecated alias */
+exports.getExamScheduleLiveRoom = exports.getExamLiveRoom;
