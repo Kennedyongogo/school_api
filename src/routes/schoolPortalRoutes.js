@@ -37,6 +37,10 @@ const {
   listMyStudentExamSchedules,
   getMyStudentExamResult,
 } = require("../controllers/schoolPortalTimetableController");
+const {
+  listMyStudentReportCards,
+  getMyStudentReportCard,
+} = require("../controllers/reportCardController");
 const { getExamLiveRoom, getExamScheduleLiveRoom } = require("../controllers/examScheduleLiveController");
 const { issueExamScheduleLiveKitToken } = require("../controllers/examScheduleLivekitTokenController");
 const {
@@ -78,6 +82,8 @@ router.get("/student/exams", authenticateUser, authorizeRoles(["student"]), list
 router.get("/student/exam-schedules", authenticateUser, authorizeRoles(["student"]), listMyStudentExamSchedules);
 router.get("/student/exam-results/:examScheduleId", authenticateUser, authorizeRoles(["student"]), getMyStudentExamResult);
 router.get("/student/exam-results/exam/:examId", authenticateUser, authorizeRoles(["student"]), getMyStudentExamResult);
+router.get("/student/report-cards", authenticateUser, authorizeRoles(["student"]), listMyStudentReportCards);
+router.get("/student/report-cards/:id", authenticateUser, authorizeRoles(["student"]), getMyStudentReportCard);
 router.get("/exam/:id", authenticateUser, getExamLiveRoom);
 router.post("/exam/:id/livekit-token", authenticateUser, issueExamScheduleLiveKitToken);
 router.get("/exam/:id/lobby", authenticateUser, getExamScheduleLobby);

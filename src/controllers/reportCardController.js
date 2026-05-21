@@ -402,6 +402,79 @@ exports.createReportCard = async (req, res) => {
   }
 };
 
+async function resolveStudentForPortalUser(userId) {
+  return Student.findOne({
+    where: { user_id: userId },
+    attributes: ["id", "curriculum_id", "curriculum_class_id"],
+  });
+}
+
+/** Student portal: list report cards for the logged-in student only. */
+exports.listMyStudentReportCards = async (req, res) => {
+  try {
+    const student = await resolveStudentForPortalUser(req.user?.id);
+    if (!student) {
+      return res.status(404).json({ success: false, message: "Student profile not found." });
+    }
+
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(50, Math.max(5, parseInt(req.query.limit, 10) || 20));
+    const offset = (page - 1) * limit;
+    const where = { student_id: student.id };
+
+    const count = await ReportCard.count({ where });
+    const rows = await ReportCard.findAll({
+      where,
+      include: [
+        { model: ReportCardLine, as: "lines", separate: true, order: [["sort_order", "ASC"]] },
+        { model: Curriculum, as: "curriculum", attributes: ["id", "name"], required: false },
+        { model: CurriculumClass, as: "curriculum_class", attributes: ["id", "name"], required: false },
+        { model: CurriculumClassLevel, as: "curriculum_class_level", attributes: ["id", "name"], required: false },
+      ],
+      order: [["created_at", "DESC"]],
+      limit,
+      offset,
+    });
+
+    return res.json({
+      success: true,
+      data: rows.map(serializeReportCard),
+      pagination: {
+        total: count,
+        page,
+        limit,
+        totalPages: Math.max(1, Math.ceil(count / limit)),
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/** Student portal: fetch one report card if it belongs to the logged-in student. */
+exports.getMyStudentReportCard = async (req, res) => {
+  try {
+    const student = await resolveStudentForPortalUser(req.user?.id);
+    if (!student) {
+      return res.status(404).json({ success: false, message: "Student profile not found." });
+    }
+
+    const row = await ReportCard.findOne({
+      where: { id: req.params.id, student_id: student.id },
+      include: [
+        { model: ReportCardLine, as: "lines", separate: true, order: [["sort_order", "ASC"]] },
+        { model: Curriculum, as: "curriculum", attributes: ["id", "name"], required: false },
+        { model: CurriculumClass, as: "curriculum_class", attributes: ["id", "name"], required: false },
+        { model: CurriculumClassLevel, as: "curriculum_class_level", attributes: ["id", "name"], required: false },
+      ],
+    });
+    if (!row) return res.status(404).json({ success: false, message: "Report card not found." });
+    return res.json({ success: true, data: serializeReportCard(row) });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 exports.listReportCards = async (req, res) => {
   try {
     const where = {};
