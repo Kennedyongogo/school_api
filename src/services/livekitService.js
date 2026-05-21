@@ -140,11 +140,40 @@ async function removeAllParticipantsFromRoom(roomName) {
   return { removed };
 }
 
+/**
+ * Verify LIVEKIT_API_KEY/SECRET against LiveKit Cloud (HTTP Room API).
+ * Browser WebSocket can still fail if the network blocks wss while this passes.
+ */
+async function probeLiveKitServerApi() {
+  if (!isConfigured()) {
+    return { ok: false, reason: "LiveKit env vars missing" };
+  }
+  const client = getRoomServiceClient();
+  if (!client) {
+    return { ok: false, reason: "RoomServiceClient not available", apiHost: getLiveKitApiUrl() };
+  }
+  try {
+    const rooms = await client.listRooms();
+    return {
+      ok: true,
+      apiHost: getLiveKitApiUrl(),
+      roomCount: Array.isArray(rooms) ? rooms.length : 0,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      apiHost: getLiveKitApiUrl(),
+      reason: err?.message || String(err),
+    };
+  }
+}
+
 module.exports = {
   getLiveKitUrl,
   getLiveKitApiUrl,
   isConfigured,
   createParticipantToken,
+  probeLiveKitServerApi,
   removePublicParticipantsFromRoom,
   removeAllParticipantsFromRoom,
 };

@@ -34,8 +34,14 @@ function usesActivityMonitor(mode) {
   return m ? ACTIVITY_MONITOR_MODES.includes(m) : false;
 }
 
-function usesLiveKitInvigilation(mode) {
+/** Live invigilation with camera — uses Google Meet (not LiveKit). */
+function usesLiveVideoInvigilation(mode) {
   return normalizeMode(mode) === "live_monitor";
+}
+
+/** @deprecated use usesLiveVideoInvigilation */
+function usesLiveKitInvigilation(mode) {
+  return usesLiveVideoInvigilation(mode);
 }
 
 function normalizeMode(raw) {
@@ -56,6 +62,7 @@ function scheduleRequiresInvigilationRoom(exam) {
   if (mode === "live_monitor") return true;
   const provider = String(exam.meeting_provider || "").toLowerCase();
   if (exam.video_mode === "livekit" || provider === "livekit") return true;
+  if (isGoogleMeetInvigilationProvider(provider) || exam.video_mode === "google_meet") return true;
   if (exam.meeting_id || exam.meeting_join_url) return true;
   const rules = exam.proctoring_rules_json;
   if (rules && typeof rules === "object" && rules.exam_access_policy === "paper_plus_room_required") {
@@ -93,6 +100,11 @@ function applyProctoringToPayload(body, payload) {
   };
 }
 
+function isGoogleMeetInvigilationProvider(provider) {
+  const p = String(provider || "").trim().toLowerCase().replace(/-/g, "_");
+  return p === "google_meet" || p === "googlemeet" || p === "meet";
+}
+
 module.exports = {
   PROCTORING_MODES,
   ACTIVITY_MONITOR_MODES,
@@ -103,5 +115,7 @@ module.exports = {
   scheduleRequiresInvigilationRoom,
   applyProctoringToPayload,
   usesActivityMonitor,
+  usesLiveVideoInvigilation,
   usesLiveKitInvigilation,
+  isGoogleMeetInvigilationProvider,
 };

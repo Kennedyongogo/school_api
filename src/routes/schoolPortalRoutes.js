@@ -13,6 +13,7 @@ const {
 } = require("../controllers/schoolPortalLiveSessionController");
 const { getLiveClassRoom } = require("../controllers/schoolPortalLiveClassController");
 const { issueLiveKitToken } = require("../controllers/livekitTokenController");
+const { reportLiveKitConnectionError } = require("../controllers/livekitConnectionErrorController");
 const {
   getLiveClassInteractions,
   postLiveClassChat,
@@ -55,6 +56,7 @@ router.post("/notifications/mark-all-read", authenticateUser, markAllSchoolPorta
 
 router.post("/live-session/join", authenticateUser, authorizeRoles(["student"]), recordLiveSessionJoin);
 router.post("/live-session/leave", authenticateUser, authorizeRoles(["student"]), recordLiveSessionLeave);
+router.post("/livekit/connection-error", authenticateUser, reportLiveKitConnectionError);
 router.get("/live-class/:id", authenticateUser, getLiveClassRoom);
 router.post("/live-class/:id/livekit-token", authenticateUser, issueLiveKitToken);
 router.get("/live-class/:id/interactions", authenticateUser, getLiveClassInteractions);

@@ -20,6 +20,17 @@ const {
 const { getExamScheduleJoinWindow } = require("../utils/examJoinWindow");
 
 const userSafe = { attributes: { exclude: ["password_hash"] } };
+
+/** Unified exam id — frontend still filters on exam_schedule_id in some hooks. */
+function examLobbyStatusPayload(examId, status, entry) {
+  return {
+    exam_id: examId,
+    exam_schedule_id: examId,
+    status,
+    entry,
+  };
+}
+
 const entryIncludes = [
   { model: User, as: "user", ...userSafe },
   { model: Student, as: "student", attributes: ["id", "admission_number"] },
@@ -131,12 +142,7 @@ exports.requestExamScheduleLobbyJoin = async (req, res) => {
     const payload = await broadcastLobby(id);
 
     if (result.status === "waiting" && (result.created || result.reused)) {
-      emitToUser(req.user.id, "exam-lobby:status", {
-        exam_id: id,
-        exam_id: id,
-        status: "waiting",
-        entry: formatted,
-      });
+      emitToUser(req.user.id, "exam-lobby:status", examLobbyStatusPayload(id, "waiting", formatted));
     }
 
     return res.json({
@@ -159,8 +165,7 @@ exports.admitExamScheduleLobbyEntry = async (req, res) => {
     await assertCanAccessExamSchedule(req, schedule);
 
     const entry = await ExamScheduleLobbyEntry.findOne({
-      where: { id: entryId, exam_id: id,
-        exam_id: id },
+      where: { id: entryId, exam_id: id },
     });
     if (!entry) return res.status(404).json({ success: false, message: "Lobby entry not found." });
     if (entry.status !== "waiting") {
@@ -178,12 +183,7 @@ exports.admitExamScheduleLobbyEntry = async (req, res) => {
     await entry.reload({ include: entryIncludes });
     const formatted = formatEntry(entry);
 
-    emitToUser(entry.user_id, "exam-lobby:status", {
-      exam_id: id,
-        exam_id: id,
-      status: "admitted",
-      entry: formatted,
-    });
+    emitToUser(entry.user_id, "exam-lobby:status", examLobbyStatusPayload(id, "admitted", formatted));
     const payload = await broadcastLobby(id);
     return res.json({ success: true, data: { entry: formatted, lobby: payload } });
   } catch (error) {
@@ -202,8 +202,7 @@ exports.denyExamScheduleLobbyEntry = async (req, res) => {
     await assertCanAccessExamSchedule(req, schedule);
 
     const entry = await ExamScheduleLobbyEntry.findOne({
-      where: { id: entryId, exam_id: id,
-        exam_id: id },
+      where: { id: entryId, exam_id: id },
     });
     if (!entry) return res.status(404).json({ success: false, message: "Lobby entry not found." });
     if (entry.status !== "waiting") {
@@ -213,12 +212,7 @@ exports.denyExamScheduleLobbyEntry = async (req, res) => {
     const now = new Date();
     await entry.update({ status: "denied", denied_at: now, denied_by: req.user.id });
 
-    emitToUser(entry.user_id, "exam-lobby:status", {
-      exam_id: id,
-        exam_id: id,
-      status: "denied",
-      entry: formatEntry(entry),
-    });
+    emitToUser(entry.user_id, "exam-lobby:status", examLobbyStatusPayload(id, "denied", formatEntry(entry)));
     const payload = await broadcastLobby(id);
     return res.json({ success: true, data: { entry: formatEntry(entry), lobby: payload } });
   } catch (error) {
@@ -237,8 +231,7 @@ exports.admitAllExamScheduleLobby = async (req, res) => {
     await assertCanAccessExamSchedule(req, schedule);
 
     const waiting = await ExamScheduleLobbyEntry.findAll({
-      where: { exam_id: id,
-        exam_id: id, status: "waiting" },
+      where: { exam_id: id, status: "waiting" },
     });
     const now = new Date();
     for (const entry of waiting) {
@@ -249,12 +242,7 @@ exports.admitAllExamScheduleLobby = async (req, res) => {
         left_at: null,
       });
       await entry.reload({ include: entryIncludes });
-      emitToUser(entry.user_id, "exam-lobby:status", {
-        exam_id: id,
-        exam_id: id,
-        status: "admitted",
-        entry: formatEntry(entry),
-      });
+      emitToUser(entry.user_id, "exam-lobby:status", examLobbyStatusPayload(id, "admitted", formatEntry(entry)));
     }
     if (waiting.length) await markScheduleLiveIfNeeded(id);
     const payload = await broadcastLobby(id);

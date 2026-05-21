@@ -27,6 +27,7 @@ const studentExamResultRoutes = require("./routes/studentExamResultRoutes");
 const subjectGradingScaleRoutes = require("./routes/subjectGradingScaleRoutes");
 const overallGradingScaleRoutes = require("./routes/overallGradingScaleRoutes");
 const examResultsRoutes = require("./routes/examResultsRoutes");
+const reportCardRoutes = require("./routes/reportCardRoutes");
 const realtimeRoutes = require("./routes/realtimeRoutes");
 const examSessionLogRoutes = require("./routes/examSessionLogRoutes");
 const schoolReportsRoutes = require("./routes/schoolReportsRoutes");
@@ -42,6 +43,7 @@ const admissionApplicationRoutes = require("./routes/admissionApplicationRoutes"
 const schoolProfileRoutes = require("./routes/schoolProfileRoutes");
 const elimuPlusRoutes = require("./routes/elimuPlusRoutes");
 const schoolPortalRoutes = require("./routes/schoolPortalRoutes");
+const googleMeetRoutes = require("./routes/googleMeetRoutes");
 const publicRoutes = require("./routes/publicRoutes");
 
 const app = express();
@@ -66,6 +68,7 @@ const grantsUploadPath = path.join(__dirname, "..", "uploads", "grants");
 const partnersUploadPath = path.join(__dirname, "..", "uploads", "partners");
 const marketplaceListingsUploadPath = path.join(__dirname, "..", "uploads", "marketplace-listings");
 const proctoringRecordingsUploadPath = path.join(__dirname, "..", "uploads", "proctoring-recordings");
+const reportCardsUploadPath = path.join(__dirname, "..", "uploads", "report-cards");
 const postersUploadPath = path.join(__dirname, "..", "uploads", "posters");
 const schoolLogosUploadPath = path.join(__dirname, "..", "uploads", "school-logos");
 const teacherProfilesUploadPath = path.join(__dirname, "..", "uploads", "teacher-profiles");
@@ -88,6 +91,7 @@ app.use("/uploads/grants", express.static(grantsUploadPath));
 app.use("/uploads/partners", express.static(partnersUploadPath));
 app.use("/uploads/marketplace-listings", express.static(marketplaceListingsUploadPath));
 app.use("/uploads/proctoring-recordings", express.static(proctoringRecordingsUploadPath));
+app.use("/uploads/report-cards", express.static(reportCardsUploadPath));
 app.use("/uploads/posters", express.static(postersUploadPath));
 app.use("/uploads/school-logos", express.static(schoolLogosUploadPath));
 app.use("/uploads/teacher-profiles", cors(), express.static(teacherProfilesUploadPath));
@@ -111,6 +115,7 @@ app.use("/api/proctoring-recordings", proctoringRecordingRoutes);
 app.use("/api/student-exam-results", studentExamResultRoutes);
 app.use("/api/grading/subject-scales", subjectGradingScaleRoutes);
 app.use("/api/grading/overall-scales", overallGradingScaleRoutes);
+app.use("/api/report-cards", reportCardRoutes);
 app.use("/api", examResultsRoutes);
 app.use("/api/realtime", realtimeRoutes);
 app.use("/api/exam-session-logs", examSessionLogRoutes);
@@ -127,6 +132,7 @@ app.use("/api/admission-applications", admissionApplicationRoutes);
 app.use("/api/school-profile", schoolProfileRoutes);
 app.use("/api/elimu-plus", elimuPlusRoutes);
 app.use("/api/school-portal", schoolPortalRoutes);
+app.use("/api/google-meet", googleMeetRoutes);
 app.use("/api/public", publicRoutes);
 
 app.post("/api/auth/forgot", async (req, res) => {

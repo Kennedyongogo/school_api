@@ -16,6 +16,8 @@ const ProctoringRecording = require("./proctoringRecording")(sequelize);
 const SubjectGradingScale = require("./subjectGradingScale")(sequelize);
 const OverallGradingScale = require("./overallGradingScale")(sequelize);
 const StudentExamResult = require("./studentExamResult")(sequelize);
+const ReportCard = require("./reportCard")(sequelize);
+const ReportCardLine = require("./reportCardLine")(sequelize);
 const ExamSessionLog = require("./examSessionLog")(sequelize);
 const TeacherDepartment = require("./teacherDepartment")(sequelize);
 const TeacherCurriculumJoin = require("./teacherCurriculumJoin")(sequelize);
@@ -65,6 +67,7 @@ const ExamScheduleLobbyEntry = require("./examScheduleLobbyEntry")(sequelize);
 const InAppNotification = require("./inAppNotification")(sequelize);
 const SchoolProfile = require("./schoolProfile")(sequelize);
 const ExamTemplate = require("./examTemplate")(sequelize);
+const GoogleMeetCredential = require("./googleMeetCredential")(sequelize);
 
 const models = {
   User,
@@ -84,6 +87,8 @@ const models = {
   SubjectGradingScale,
   OverallGradingScale,
   StudentExamResult,
+  ReportCard,
+  ReportCardLine,
   ExamSessionLog,
   TeacherDepartment,
   TeacherCurriculumJoin,
@@ -125,21 +130,27 @@ const models = {
   InAppNotification,
   SchoolProfile,
   ExamTemplate,
+  GoogleMeetCredential,
 };
 
 const { ensureUnifiedExamSchema } = require("../utils/ensureUnifiedExamSchema");
+const { ensureReportCardSchema } = require("../utils/ensureReportCardSchema");
 
 const initializeModels = async () => {
   try {
     console.log("🔄 Creating/updating school system tables...");
     await ensureUnifiedExamSchema();
+    await ensureReportCardSchema();
     await User.sync({ force: false, alter: false });
+    await GoogleMeetCredential.sync({ force: false, alter: true });
     await Teacher.sync({ force: false, alter: false });
     await Student.sync({ force: false, alter: false });
     await Parent.sync({ force: false, alter: false });
     await SchoolAdmin.sync({ force: false, alter: false });
     await Department.sync({ force: false, alter: false });
     await StudentExamResult.sync({ force: false, alter: false });
+    await ReportCard.sync({ force: false, alter: false });
+    await ReportCardLine.sync({ force: false, alter: false });
     await FeeStructure.sync({ force: false, alter: false });
     await AcademicTerm.sync({ force: false, alter: false });
     await SchoolProfile.sync({ force: false, alter: false });
@@ -222,6 +233,13 @@ const setupAssociations = () => {
       as: "school_admin_profile",
     });
     SchoolAdmin.belongsTo(User, { foreignKey: "user_id", as: "user" });
+
+    User.hasOne(GoogleMeetCredential, {
+      foreignKey: "user_id",
+      onDelete: "CASCADE",
+      as: "google_meet_credential",
+    });
+    GoogleMeetCredential.belongsTo(User, { foreignKey: "user_id", as: "user" });
 
     Teacher.hasMany(Student, {
       foreignKey: "class_teacher_id",
@@ -428,6 +446,23 @@ const setupAssociations = () => {
     StudentExamResult.belongsTo(Exam, {
       foreignKey: "exam_id",
       as: "exam",
+    });
+
+    Student.hasMany(ReportCard, { foreignKey: "student_id", as: "report_cards" });
+    ReportCard.belongsTo(Student, { foreignKey: "student_id", as: "student" });
+    ReportCard.belongsTo(Curriculum, { foreignKey: "curriculum_id", as: "curriculum" });
+    ReportCard.belongsTo(CurriculumClass, { foreignKey: "curriculum_class_id", as: "curriculum_class" });
+    ReportCard.belongsTo(CurriculumClassLevel, {
+      foreignKey: "curriculum_class_level_id",
+      as: "curriculum_class_level",
+    });
+    ReportCard.belongsTo(User, { foreignKey: "created_by", as: "creator" });
+    ReportCard.hasMany(ReportCardLine, { foreignKey: "report_card_id", as: "lines" });
+    ReportCardLine.belongsTo(ReportCard, { foreignKey: "report_card_id", as: "report_card" });
+    ReportCardLine.belongsTo(Exam, { foreignKey: "exam_id", as: "exam" });
+    ReportCardLine.belongsTo(StudentExamResult, {
+      foreignKey: "student_exam_result_id",
+      as: "student_exam_result",
     });
 
 

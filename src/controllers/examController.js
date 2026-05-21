@@ -48,7 +48,7 @@ const {
   applyProctoringToPayload,
   normalizeMode,
   usesActivityMonitor,
-  usesLiveKitInvigilation,
+  usesLiveVideoInvigilation,
 } = require("../utils/examProctoring");
 const {
   autoSubmitElapsedDraftIfNeeded,
@@ -59,7 +59,7 @@ const {
 
 function meetingFieldsForProctoringMode(examRow, proctoringMode) {
   const mode = normalizeMode(proctoringMode ?? examRow?.proctoring_mode);
-  if (usesLiveKitInvigilation(mode)) {
+  if (usesLiveVideoInvigilation(mode)) {
     const urls = resolveExamMeetingUrls({}, examRow, { preferLiveKit: true });
     if (urls.meeting_join_url) {
       return {

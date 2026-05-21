@@ -18,7 +18,6 @@ const {
   syncProctoringAttemptWithSubmission,
   latestAttemptByStudent,
 } = require("../utils/examSubmissionDuration");
-
 async function teacherProfileFromReq(req) {
   if (req.user?.role !== "teacher") return null;
   return Teacher.findOne({ where: { user_id: req.user.id }, attributes: ["id", "user_id"] });
@@ -76,7 +75,20 @@ exports.listOnlineExamsUpcoming = async (req, res) => {
 
 exports.initiateOnlineExam = async (req, res) => {
   try {
-    const row = await Exam.findByPk(req.params.id, { attributes: ["id", "title", "session_status", "is_active", "meeting_id", "meeting_provider", "meeting_join_url", "meeting_host_url", "teacher_id"] });
+    const row = await Exam.findByPk(req.params.id, {
+      attributes: [
+        "id",
+        "title",
+        "session_status",
+        "is_active",
+        "meeting_id",
+        "meeting_provider",
+        "meeting_join_url",
+        "meeting_host_url",
+        "teacher_id",
+        "proctoring_mode",
+      ],
+    });
     if (!row) {
       return res.status(404).json({ success: false, message: "Exam not found" });
     }
@@ -94,10 +106,10 @@ exports.initiateOnlineExam = async (req, res) => {
     if (!urls.meeting_join_url) {
       const liveKitHint = liveKitConfigured()
         ? ""
-        : " LiveKit is not configured — set LIVEKIT_URL, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET.";
+        : " Set LIVEKIT_URL, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET in server .env.";
       return res.status(400).json({
         success: false,
-        message: `No meeting URL available. Set ONLINE_MEETING_PLATFORM=livekit${liveKitHint} Or set ONLINE_MEETING_DEFAULT_JOIN_URL, or send meeting_join_url in the request body.`,
+        message: `No meeting URL available. Set ONLINE_MEETING_PLATFORM=livekit${liveKitHint} Or send meeting_join_url in the request body.`,
       });
     }
 

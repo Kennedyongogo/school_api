@@ -7,11 +7,13 @@ const includes = [
 ];
 
 async function ensureNoOverlap(payload, excludeId = null) {
-  const min = Number(payload.min_score);
-  const max = Number(payload.max_score);
-  if (!Number.isFinite(min) || !Number.isFinite(max)) throw new Error("min_score and max_score must be valid numbers.");
-  if (min < 0 || max > 100) throw new Error("Overall grade bands must be inside 0..100.");
-  if (min > max) throw new Error("min_score cannot be greater than max_score.");
+  const min = Number(payload.min_score ?? payload.range_from);
+  const max = Number(payload.max_score ?? payload.range_to);
+  if (!Number.isFinite(min) || !Number.isFinite(max)) {
+    throw new Error("Range from and range to must be valid numbers.");
+  }
+  if (min < 0) throw new Error("Range from cannot be negative.");
+  if (min > max) throw new Error("Range from cannot be greater than range to.");
   const where = {
     curriculum_id: payload.curriculum_id,
     curriculum_class_id: payload.curriculum_class_id,
@@ -39,10 +41,28 @@ exports.listOverallScales = async (req, res) => {
   }
 };
 
+function normalizeOverallPayload(body = {}) {
+  const min = body.min_score ?? body.range_from;
+  const max = body.max_score ?? body.range_to;
+  return {
+    curriculum_id: body.curriculum_id,
+    curriculum_class_id: body.curriculum_class_id,
+    min_score: min,
+    max_score: max,
+    overall_grade: body.overall_grade,
+    remarks: body.remarks ?? null,
+    points: null,
+    is_pass: body.is_pass,
+    sort_order: body.sort_order,
+    is_active: body.is_active,
+  };
+}
+
 exports.createOverallScale = async (req, res) => {
   try {
-    await ensureNoOverlap(req.body || {});
-    const row = await OverallGradingScale.create(req.body || {});
+    const payload = normalizeOverallPayload(req.body || {});
+    await ensureNoOverlap(payload);
+    const row = await OverallGradingScale.create(payload);
     const created = await OverallGradingScale.findByPk(row.id, { include: includes });
     return res.status(201).json({ success: true, data: created });
   } catch (error) {
@@ -57,13 +77,18 @@ exports.updateOverallScale = async (req, res) => {
     const payload = {
       curriculum_id: req.body.curriculum_id ?? row.curriculum_id,
       curriculum_class_id: req.body.curriculum_class_id ?? row.curriculum_class_id,
-      min_score: req.body.min_score ?? row.min_score,
-      max_score: req.body.max_score ?? row.max_score,
+      min_score: req.body.min_score ?? req.body.range_from ?? row.min_score,
+      max_score: req.body.max_score ?? req.body.range_to ?? row.max_score,
     };
     await ensureNoOverlap(payload, row.id);
-    const allowed = ["curriculum_id", "curriculum_class_id", "min_score", "max_score", "overall_grade", "remarks", "points", "is_pass", "sort_order", "is_active"];
+    const allowed = ["curriculum_id", "curriculum_class_id", "min_score", "max_score", "overall_grade", "remarks", "is_pass", "sort_order", "is_active"];
     const patch = {};
-    for (const k of allowed) if (req.body[k] !== undefined) patch[k] = req.body[k];
+    for (const k of allowed) {
+      if (req.body[k] !== undefined) patch[k] = req.body[k];
+    }
+    if (req.body.range_from !== undefined) patch.min_score = req.body.range_from;
+    if (req.body.range_to !== undefined) patch.max_score = req.body.range_to;
+    patch.points = null;
     await row.update(patch);
     const updated = await OverallGradingScale.findByPk(row.id, { include: includes });
     return res.json({ success: true, data: updated });
