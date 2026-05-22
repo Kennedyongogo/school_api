@@ -6,10 +6,7 @@
   "scripts": {
     "start": "nodemon src/server.js",
     "start:cluster": "node src/cluster.js",
-    "test": "echo \"No tests specified\" && exit 0",
-    "create-super-admin": "node scripts/createSuperAdmin.js",
-    "test:pg-tcp": "node scripts/testPgTcp.js",
-    "db:add-student-account-columns": "node scripts/addStudentAccountColumns.js"
+    "test": "echo \"No tests specified\" && exit 0"
   },
   "author": "kennedy ongongo",
   "email": "ongongokennedy89@gmail.com",

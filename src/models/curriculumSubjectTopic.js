@@ -16,7 +16,7 @@ module.exports = (sequelize) => {
         references: { model: "curriculum_subjects", key: "id" },
         onDelete: "CASCADE",
       },
-      /** JS/API use `name`; DB may still use legacy column `title` until you run `scripts/sql/split_curriculum_topics_subtopics.sql` (rename). */
+      /** JS/API use `name`; DB may still use legacy column `title` until renamed via migration. */
       name: {
         type: DataTypes.STRING(255),
         allowNull: false,
