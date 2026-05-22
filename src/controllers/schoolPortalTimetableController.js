@@ -22,6 +22,7 @@ const { Op, Sequelize } = require("sequelize");
 const userSafe = { attributes: { exclude: ["password_hash"] } };
 const { getLessonJoinWindow } = require("../utils/lessonJoinWindow");
 const { examAccessPolicyForMode, normalizeMode } = require("../utils/examProctoring");
+const { isPdfFormExam } = require("../utils/examPdfForm");
 const {
   autoSubmitElapsedDraftIfNeeded,
   buildStudentExamAccess,
@@ -275,10 +276,12 @@ exports.listMyStudentExamSchedules = async (req, res) => {
           id: r.id,
           title: r.title,
           status: r.status,
+          exam_type: r.exam_type || "questions",
           duration_minutes: r.duration_minutes,
           requires_webcam: r.requires_webcam,
           prevent_tab_switch: r.prevent_tab_switch,
         },
+        exam_type: r.exam_type || "questions",
         teacher: r.teacher || null,
         attendance,
         can_open: access.can_open,
@@ -312,7 +315,9 @@ exports.getMyStudentExamResult = async (req, res) => {
       return res.status(404).json({ success: false, message: "Student profile not found." });
     }
 
-    const exam = await Exam.findByPk(examId, { attributes: ["id", "title"] });
+    const exam = await Exam.findByPk(examId, {
+      attributes: ["id", "title", "exam_type", "total_marks"],
+    });
     if (!exam) {
       return res.status(404).json({ success: false, message: "Exam not found." });
     }
@@ -331,38 +336,47 @@ exports.getMyStudentExamResult = async (req, res) => {
       return res.status(404).json({ success: false, message: "Exam result not found. The exam may not have been graded yet." });
     }
 
-    // Find the submission to get answers
-    const submission = await ExamSubmission.findOne({
-      where: { exam_id: exam.id, student_id: student.id, status: "submitted" },
-    });
+    const pdfForm = isPdfFormExam(exam);
+    const totalMax = Math.max(0, Number(exam.total_marks || result.total_marks || 0)) || 100;
 
     let questions = [];
-    if (submission) {
-      // Get answers with marks
-      const answers = await ExamAnswer.findAll({
-        where: { submission_id: submission.id },
-        include: [
-          {
-            model: ExamQuestion,
-            as: "question",
-            required: true,
-            attributes: ["id", "question_text", "marks"],
-          },
-        ],
-        order: [["created_at", "ASC"]],
+    if (!pdfForm) {
+      const submission = await ExamSubmission.findOne({
+        where: { exam_id: exam.id, student_id: student.id, status: "submitted" },
       });
+      if (submission) {
+        const answers = await ExamAnswer.findAll({
+          where: { submission_id: submission.id },
+          include: [
+            {
+              model: ExamQuestion,
+              as: "question",
+              required: true,
+              attributes: ["id", "question_text", "marks"],
+            },
+          ],
+          order: [["created_at", "ASC"]],
+        });
 
-      questions = answers.map((a) => ({
-        question: a.question.question_text,
-        score: Number(a.marks_obtained || 0),
-        maxScore: Number(a.question.marks || 0),
-      }));
+        questions = answers
+          .filter((a) => a.question)
+          .map((a) => ({
+            question: a.question.question_text,
+            score: Number(a.marks_obtained || 0),
+            maxScore: Number(a.question.marks || 0),
+          }));
+      }
     }
 
+    const totalScore = Number(result.marks_obtained ?? result.marks ?? 0);
     const data = {
-      totalScore: Number(result.marks_obtained || 0),
-      totalMax: 100, // Assuming max is 100, or could calculate from questions
-      grade: result.grade,
+      examType: exam.exam_type || "questions",
+      showQuestionBreakdown: !pdfForm,
+      totalScore,
+      totalMax,
+      percentage: totalMax > 0 ? Number(((totalScore / totalMax) * 100).toFixed(1)) : null,
+      grade: result.grade_letter || result.grade,
+      gradeRemarks: result.grade_remarks || null,
       questions,
     };
 

@@ -104,6 +104,19 @@ module.exports = (sequelize) => {
       exam_type: {
         type: DataTypes.STRING(50),
         allowNull: true,
+        defaultValue: "questions",
+      },
+      pdf_template_path: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
+      pdf_field_schema_json: {
+        type: DataTypes.JSONB,
+        allowNull: true,
+      },
+      pdf_answer_key_json: {
+        type: DataTypes.JSONB,
+        allowNull: true,
       },
       total_marks: {
         type: DataTypes.INTEGER,

@@ -21,6 +21,12 @@ const {
   cleanupExamStaleDraftSubmissions,
 } = require("../controllers/examController");
 const {
+  uploadExamPdfTemplate,
+  updateExamPdfAnswerKey,
+  getExamPdfTemplate,
+  saveSubmissionPdfAnswers,
+} = require("../controllers/examPdfFormController");
+const {
   listOnlineExamsUpcoming,
   initiateOnlineExam,
   notifyOnlineExamClass,
@@ -31,7 +37,12 @@ const {
 } = require("../controllers/examLiveController");
 const { authenticateUser, authorizeRoles } = require("../middleware/auth");
 const { errorHandler } = require("../middleware/errorHandler");
-const { uploadDocument, uploadExamAnswerFile, handleUploadError } = require("../middleware/upload");
+const {
+  uploadDocument,
+  uploadExamAnswerFile,
+  uploadExamPdfTemplate: uploadExamPdfTemplateMw,
+  handleUploadError,
+} = require("../middleware/upload");
 
 const { STAFF_ROLES, ADMIN_PORTAL_API_ROLES, SCHOOL_ADMIN_ROLES } = require("../constants/userRoles");
 const TEACH_OR_STAFF = [...STAFF_ROLES, "teacher"];
@@ -57,6 +68,17 @@ router.post(
   generateQuestionsFromDocument
 );
 router.post("/ai/extract-questions", authenticateUser, authorizeRoles(TEACH_OR_STAFF), extractQuestionsWithAi);
+router.post(
+  "/:id/pdf-template",
+  authenticateUser,
+  authorizeRoles(TEACH_OR_STAFF),
+  uploadExamPdfTemplateMw,
+  handleUploadError,
+  uploadExamPdfTemplate
+);
+router.put("/:id/pdf-answer-key", authenticateUser, authorizeRoles(TEACH_OR_STAFF), updateExamPdfAnswerKey);
+router.get("/:id/pdf-template", authenticateUser, getExamPdfTemplate);
+router.put("/submissions/:submissionId/pdf-answers", authenticateUser, authorizeRoles(["student"]), saveSubmissionPdfAnswers);
 router.get("/:id", authenticateUser, authorizeRoles(TEACH_OR_STAFF), getExam);
 router.put("/:id", authenticateUser, authorizeRoles(SCHOOL_ADMIN_ROLES), updateExam);
 router.delete("/:id", authenticateUser, authorizeRoles(SCHOOL_ADMIN_ROLES), deleteExam);

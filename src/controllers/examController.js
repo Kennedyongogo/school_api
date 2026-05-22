@@ -17,7 +17,7 @@ const fs = require("fs");
 const path = require("path");
 const { convertToRelativePath } = require("../utils/filePath");
 const OpenAI = require("openai");
-const pdfParse = require("pdf-parse");
+const { parsePdfBuffer } = require("../utils/pdfParseBuffer");
 const mammoth = require("mammoth");
 const Tesseract = require("tesseract.js");
 const { Op } = require("sequelize");
@@ -56,6 +56,8 @@ const {
   syncProctoringAttemptWithSubmission,
   logProctoringEvent,
 } = require("../utils/examSubmissionDuration");
+const { isPdfFormExam, EXAM_PDF_FORM_TYPE } = require("../utils/examPdfForm");
+const { finalizePdfFormSubmission } = require("./examPdfFormController");
 
 function meetingFieldsForProctoringMode(examRow, proctoringMode) {
   const mode = normalizeMode(proctoringMode ?? examRow?.proctoring_mode);
@@ -512,7 +514,7 @@ const extractDocumentText = async (reqFile, fileBuffer) => {
   if (originalName.endsWith(".txt") || originalName.endsWith(".csv") || originalName.endsWith(".md")) return asUtf8();
 
   if (mime.includes("pdf") || originalName.endsWith(".pdf")) {
-    const parsed = await pdfParse(fileBuffer);
+    const parsed = await parsePdfBuffer(fileBuffer);
     return String(parsed?.text || "").trim();
   }
 
@@ -999,22 +1001,30 @@ exports.createExam = async (req, res) => {
     const body = { ...req.body };
     const title = String(body.title || body.name || "").trim();
     if (!title) throw new Error("Exam name is required.");
-    if (!body.template_id) throw new Error("Template is required.");
+    const examType = String(body.exam_type || "questions").trim() === EXAM_PDF_FORM_TYPE ? EXAM_PDF_FORM_TYPE : "questions";
+    const isPdfForm = examType === EXAM_PDF_FORM_TYPE;
+    if (!isPdfForm && !body.template_id) throw new Error("Template is required.");
     if (!Number.isFinite(Number(body.duration_minutes)) || Number(body.duration_minutes) <= 0) {
       throw new Error("Duration minutes must be greater than zero.");
     }
 
-    const template = await ExamTemplate.findByPk(body.template_id, { transaction: tx });
-    if (!template) throw new Error("Selected template was not found.");
+    let template = null;
+    if (body.template_id) {
+      template = await ExamTemplate.findByPk(body.template_id, { transaction: tx });
+      if (!template) throw new Error("Selected template was not found.");
+    }
 
     const normalizedQuestions = Array.isArray(body.questions) ? body.questions.map((q, i) => normalizeQuestion(q, i)) : [];
-    if (!normalizedQuestions.length) throw new Error("At least one exam question is required.");
+    if (!isPdfForm && !normalizedQuestions.length) throw new Error("At least one exam question is required.");
     const status = body.status && EXAM_STATUS.has(String(body.status)) ? String(body.status) : "draft";
 
     const createPayload = {
       title,
       description: body.description || null,
-      template_id: body.template_id,
+      exam_type: examType,
+      template_id: body.template_id || null,
+      pdf_answer_key_json:
+        body.pdf_answer_key_json && typeof body.pdf_answer_key_json === "object" ? body.pdf_answer_key_json : {},
       curriculum_id: body.curriculum_id || null,
       curriculum_class_id: body.curriculum_class_id || null,
       curriculum_subject_id: body.curriculum_subject_id || null,
@@ -1040,10 +1050,12 @@ exports.createExam = async (req, res) => {
     if (Object.keys(meetingPatch).length) {
       await row.update(meetingPatch, { transaction: tx });
     }
-    await ExamQuestion.bulkCreate(
-      normalizedQuestions.map((q) => ({ ...q, exam_id: row.id })),
-      { transaction: tx }
-    );
+    if (normalizedQuestions.length) {
+      await ExamQuestion.bulkCreate(
+        normalizedQuestions.map((q) => ({ ...q, exam_id: row.id })),
+        { transaction: tx }
+      );
+    }
     await tx.commit();
     const created = await Exam.findByPk(row.id, { include: examDetailIncludes });
     return res.status(201).json({ success: true, data: created });
@@ -1091,6 +1103,8 @@ exports.updateExam = async (req, res) => {
       "meeting_id",
       "meeting_join_url",
       "meeting_host_url",
+      "exam_type",
+      "pdf_answer_key_json",
     ];
     const patch = {};
     for (const k of allowed) {
@@ -1259,6 +1273,9 @@ exports.createExamSubmission = async (req, res) => {
   try {
     const exam = await Exam.findByPk(req.params.id, { include: [{ model: ExamQuestion, as: "questions" }] });
     if (!exam) return res.status(404).json({ success: false, message: "Exam not found" });
+    if (isPdfFormExam(exam) && !exam.pdf_template_path) {
+      return res.status(400).json({ success: false, message: "PDF exam template has not been uploaded yet." });
+    }
     const student = await findStudentByUser(req.user?.id);
     if (!student) return res.status(403).json({ success: false, message: "Student profile not found for this user." });
 
@@ -1495,17 +1512,31 @@ exports.submitExamSubmission = async (req, res) => {
       "auto_submit_warning_limit",
       "auto_submit_time_elapsed",
     ]).has(submitReason);
-    const requiredQuestions = (submission.exam?.questions || []).filter((q) => q.required);
-    const answerMap = new Map((submission.answers || []).map((a) => [a.question_id, a]));
-    const hasAnyAnsweredQuestion = (submission.answers || []).some((a) => hasMeaningfulAnswer(a));
-    if (!hasAnyAnsweredQuestion && !autoSubmitNoAnswerAllowed) {
-      return res.status(400).json({ success: false, message: "You must answer at least one question before submitting." });
-    }
-    if (!autoSubmitNoAnswerAllowed) {
-      for (const rq of requiredQuestions) {
-        const ans = answerMap.get(rq.id);
-        if (!hasMeaningfulAnswer(ans)) {
-          return res.status(400).json({ success: false, message: `Required question not answered: ${rq.question_text}` });
+    const pdfForm = isPdfFormExam(submission.exam);
+    if (pdfForm) {
+      const answers =
+        submission.pdf_answers_json && typeof submission.pdf_answers_json === "object" ? submission.pdf_answers_json : {};
+      const hasAny = Object.values(answers).some((v) => {
+        if (typeof v === "boolean") return v;
+        if (Array.isArray(v)) return v.length > 0;
+        return String(v ?? "").trim() !== "";
+      });
+      if (!hasAny && !autoSubmitNoAnswerAllowed) {
+        return res.status(400).json({ success: false, message: "Fill in at least one form field before submitting." });
+      }
+    } else {
+      const requiredQuestions = (submission.exam?.questions || []).filter((q) => q.required);
+      const answerMap = new Map((submission.answers || []).map((a) => [a.question_id, a]));
+      const hasAnyAnsweredQuestion = (submission.answers || []).some((a) => hasMeaningfulAnswer(a));
+      if (!hasAnyAnsweredQuestion && !autoSubmitNoAnswerAllowed) {
+        return res.status(400).json({ success: false, message: "You must answer at least one question before submitting." });
+      }
+      if (!autoSubmitNoAnswerAllowed) {
+        for (const rq of requiredQuestions) {
+          const ans = answerMap.get(rq.id);
+          if (!hasMeaningfulAnswer(ans)) {
+            return res.status(400).json({ success: false, message: `Required question not answered: ${rq.question_text}` });
+          }
         }
       }
     }
@@ -1519,12 +1550,20 @@ exports.submitExamSubmission = async (req, res) => {
     }
 
     const submittedAt = new Date();
+    if (pdfForm) {
+      await finalizePdfFormSubmission(submission, submission.exam);
+      await submission.reload();
+    }
     await submission.update({ status: "submitted", submitted_at: submittedAt, time_spent_seconds: elapsed });
     await syncProctoringAttemptWithSubmission(submission.exam, student.id, submission, {
       submitReason,
     });
     const updated = await ExamSubmission.findByPk(submission.id, { include: [{ model: ExamAnswer, as: "answers" }] });
-    return res.json({ success: true, data: updated });
+    return res.json({
+      success: true,
+      data: updated,
+      pdf_grading: pdfForm ? updated.pdf_auto_grading_json : undefined,
+    });
   } catch (error) {
     return res.status(400).json({ success: false, message: error.message });
   }
@@ -1599,6 +1638,10 @@ exports.listExamSubmissionsForMarking = async (req, res) => {
         started_at: s.started_at,
         submitted_at: s.submitted_at,
         created_at: s.created_at,
+        pdf_answers_json: s.pdf_answers_json,
+        pdf_completed_file_path: s.pdf_completed_file_path,
+        pdf_auto_score: s.pdf_auto_score != null ? Number(s.pdf_auto_score) : null,
+        pdf_auto_grading_json: s.pdf_auto_grading_json,
         student: s.student || null,
         answers: uniqueAnswers.map((a) => ({
           id: a.id,
@@ -1632,6 +1675,7 @@ exports.listExamSubmissionsForMarking = async (req, res) => {
         exam: {
           id: exam.id,
           title: exam.title,
+          exam_type: exam.exam_type,
           total_marks: exam.total_marks,
           passing_marks: exam.passing_marks,
         },

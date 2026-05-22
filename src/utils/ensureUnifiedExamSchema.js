@@ -73,6 +73,34 @@ async function ensureUnifiedExamSchema() {
     if (!examNames.has("meeting_join_url")) await addExamCol(`ALTER TABLE exams ADD COLUMN meeting_join_url TEXT`);
     if (!examNames.has("meeting_host_url")) await addExamCol(`ALTER TABLE exams ADD COLUMN meeting_host_url TEXT`);
     if (!examNames.has("updated_by")) await addExamCol(`ALTER TABLE exams ADD COLUMN updated_by UUID REFERENCES users(id)`);
+    if (!examNames.has("pdf_template_path")) await addExamCol(`ALTER TABLE exams ADD COLUMN pdf_template_path TEXT`);
+    if (!examNames.has("pdf_field_schema_json")) await addExamCol(`ALTER TABLE exams ADD COLUMN pdf_field_schema_json JSONB`);
+    if (!examNames.has("pdf_answer_key_json")) await addExamCol(`ALTER TABLE exams ADD COLUMN pdf_answer_key_json JSONB`);
+    await q(`UPDATE exams SET exam_type = 'questions' WHERE exam_type IS NULL OR TRIM(exam_type) = ''`);
+  }
+
+  const [subCols] = await sequelize.query(`
+    SELECT column_name FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'exam_submissions'
+  `);
+  const subNames = new Set((subCols || []).map((r) => r.column_name));
+  if (subNames.size > 0) {
+    // Orphan rows block FK sync when exams were deleted but submissions remained.
+    await q(`
+      DELETE FROM exam_answers
+      WHERE submission_id IN (
+        SELECT s.id FROM exam_submissions s
+        WHERE NOT EXISTS (SELECT 1 FROM exams e WHERE e.id = s.exam_id)
+      )
+    `);
+    await q(`
+      DELETE FROM exam_submissions s
+      WHERE NOT EXISTS (SELECT 1 FROM exams e WHERE e.id = s.exam_id)
+    `);
+    if (!subNames.has("pdf_answers_json")) await q(`ALTER TABLE exam_submissions ADD COLUMN pdf_answers_json JSONB`);
+    if (!subNames.has("pdf_completed_file_path")) await q(`ALTER TABLE exam_submissions ADD COLUMN pdf_completed_file_path TEXT`);
+    if (!subNames.has("pdf_auto_score")) await q(`ALTER TABLE exam_submissions ADD COLUMN pdf_auto_score DECIMAL(8,2)`);
+    if (!subNames.has("pdf_auto_grading_json")) await q(`ALTER TABLE exam_submissions ADD COLUMN pdf_auto_grading_json JSONB`);
   }
 
   const [attemptCols] = await sequelize.query(`

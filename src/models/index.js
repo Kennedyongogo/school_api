@@ -135,12 +135,14 @@ const models = {
 
 const { ensureUnifiedExamSchema } = require("../utils/ensureUnifiedExamSchema");
 const { ensureReportCardSchema } = require("../utils/ensureReportCardSchema");
+const { ensureInAppNotificationSchema } = require("../utils/ensureInAppNotificationSchema");
 
 const initializeModels = async () => {
   try {
     console.log("🔄 Creating/updating school system tables...");
     await ensureUnifiedExamSchema();
     await ensureReportCardSchema();
+    await ensureInAppNotificationSchema();
     await User.sync({ force: false, alter: false });
     await GoogleMeetCredential.sync({ force: false, alter: true });
     await Teacher.sync({ force: false, alter: false });

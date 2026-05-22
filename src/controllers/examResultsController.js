@@ -1,5 +1,6 @@
 const { Op } = require("sequelize");
 const { Exam, ExamSubmission, ExamAttempt, ExamAnswer, StudentExamResult, CurriculumSubject, SubjectGradingScale, Student } = require("../models");
+const { isPdfFormExam } = require("../utils/examPdfForm");
 
 /** Map grading scale band to DB columns (grade is VARCHAR(20) — store letter only, not a long sentence). */
 function gradeFieldsFromBand(band) {
@@ -103,12 +104,14 @@ exports.gradeExamSubmission = async (req, res) => {
       where: { exam_id: exam.id, student_id: submission.student_id },
     });
 
-    let totalScore = attempt.total_score;
+    let totalScore = attempt?.total_score;
+    if (totalScore == null && isPdfFormExam(exam) && submission.pdf_auto_score != null) {
+      totalScore = Number(submission.pdf_auto_score);
+    }
     if (totalScore == null) {
-      // Calculate from answers
       const answers = await ExamAnswer.findAll({
         where: { submission_id: submission.id },
-        attributes: ['marks_obtained'],
+        attributes: ["marks_obtained"],
       });
       totalScore = answers.reduce((sum, a) => sum + Number(a.marks_obtained || 0), 0);
     }

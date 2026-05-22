@@ -75,6 +75,8 @@ const teacherProfilesUploadPath = path.join(__dirname, "..", "uploads", "teacher
 const studentProfilesUploadPath = path.join(__dirname, "..", "uploads", "student-profiles");
 const admissionDocumentsUploadPath = path.join(__dirname, "..", "uploads", "admission-documents");
 const examAnswersUploadPath = path.join(__dirname, "..", "uploads", "exam-answers");
+const examPdfTemplatesUploadPath = path.join(__dirname, "..", "uploads", "exam-pdf-templates");
+const examPdfCompletedUploadPath = path.join(__dirname, "..", "uploads", "exam-pdf-completed");
 
 app.use("/uploads/profiles", express.static(profilesUploadPath));
 app.use("/uploads/documents", express.static(documentsUploadPath));
@@ -98,6 +100,8 @@ app.use("/uploads/teacher-profiles", cors(), express.static(teacherProfilesUploa
 app.use("/uploads/student-profiles", cors(), express.static(studentProfilesUploadPath));
 app.use("/uploads/admission-documents", cors(), express.static(admissionDocumentsUploadPath));
 app.use("/uploads/exam-answers", cors(), express.static(examAnswersUploadPath));
+app.use("/uploads/exam-pdf-templates", cors(), express.static(examPdfTemplatesUploadPath));
+app.use("/uploads/exam-pdf-completed", cors(), express.static(examPdfCompletedUploadPath));
 
 app.use("/api/users", userRoutes);
 app.use("/api/students", studentRoutes);
