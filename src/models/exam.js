@@ -161,6 +161,20 @@ module.exports = (sequelize) => {
         type: DataTypes.ENUM("draft", "published", "archived"),
         defaultValue: "draft",
       },
+      exam_fee_access_mode: {
+        type: DataTypes.STRING(32),
+        allowNull: false,
+        defaultValue: "none",
+      },
+      exam_fee_minimum_amount: {
+        type: DataTypes.DECIMAL(12, 2),
+        allowNull: true,
+      },
+      exam_fee_minimum_basis: {
+        type: DataTypes.STRING(16),
+        allowNull: true,
+        defaultValue: "total",
+      },
       created_by: {
         type: DataTypes.UUID,
         allowNull: true,

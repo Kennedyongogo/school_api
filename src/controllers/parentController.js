@@ -1,6 +1,15 @@
 const { Op } = require("sequelize");
 const moment = require("moment");
-const { User, Parent, Student, Installment } = require("../models");
+const {
+  User,
+  Parent,
+  Student,
+  Installment,
+  Curriculum,
+  CurriculumClass,
+  CurriculumClassLevel,
+  Teacher,
+} = require("../models");
 const { normalizeEmail, normalizeUsername } = require("../utils/userIdentity");
 const { getRemainingGraceDays } = require("../utils/gracePeriod");
 
@@ -60,7 +69,28 @@ async function hydrateParent(parentRow) {
   }
   const students = await Student.findAll({
     where: { id: ids },
-    include: [{ model: User, as: "user", attributes: userExclude }],
+    include: [
+      { model: User, as: "user", attributes: userExclude },
+      { model: Curriculum, as: "curriculum", attributes: ["id", "name", "type"], required: false },
+      {
+        model: CurriculumClass,
+        as: "curriculum_class",
+        attributes: ["id", "name", "code", "curriculum_id"],
+        required: false,
+      },
+      {
+        model: CurriculumClassLevel,
+        as: "curriculum_class_level",
+        attributes: ["id", "name", "curriculum_class_id"],
+        required: false,
+      },
+      {
+        model: Teacher,
+        as: "class_teacher",
+        required: false,
+        include: [{ model: User, as: "user", attributes: userExclude }],
+      },
+    ],
   });
   const byId = new Map(students.map((s) => [String(s.id), s]));
   json.students = ids.map((id) => byId.get(String(id))).filter(Boolean);

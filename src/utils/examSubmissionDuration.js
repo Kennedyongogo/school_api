@@ -178,6 +178,34 @@ async function autoSubmitElapsedDraftIfNeeded(submission, exam, studentId) {
   return submission;
 }
 
+function mergeFeeAccessIntoExamAccess(access, feeAccess) {
+  if (!feeAccess || feeAccess.allowed !== false) {
+    return {
+      ...access,
+      fee_access: feeAccess || { allowed: true },
+    };
+  }
+  return {
+    ...access,
+    fee_payment_required: true,
+    open_block_reason: access.open_block_reason || "fee_not_met",
+    fee_block_message: null,
+    exam_fee_access_mode: feeAccess.mode,
+    fee_required_amount: feeAccess.required_amount ?? null,
+    fee_amount_paid: feeAccess.amount_paid ?? feeAccess.allocation?.total_paid ?? null,
+    fee_amount_shortfall: feeAccess.amount_shortfall ?? null,
+    fee_access: feeAccess,
+  };
+}
+
+async function buildStudentExamAccessWithFees(student, exam, submission, scheduleRow = {}) {
+  const { evaluateExamFeeAccess } = require("./feeBillingService");
+  const base = buildStudentExamAccess(exam, submission, scheduleRow);
+  if (!student || !exam) return base;
+  const feeAccess = await evaluateExamFeeAccess(student, exam);
+  return mergeFeeAccessIntoExamAccess(base, feeAccess);
+}
+
 function buildStudentExamAccess(exam, submission, scheduleRow = {}) {
   const duration = getSubmissionDurationState(exam, submission);
   const scheduleEndMs = scheduleRow.end_time ? new Date(scheduleRow.end_time).getTime() : null;
@@ -219,6 +247,8 @@ module.exports = {
   getSubmissionDurationState,
   autoSubmitElapsedDraftIfNeeded,
   buildStudentExamAccess,
+  buildStudentExamAccessWithFees,
+  mergeFeeAccessIntoExamAccess,
   syncProctoringAttemptWithSubmission,
   logProctoringEvent,
   latestAttemptByStudent,

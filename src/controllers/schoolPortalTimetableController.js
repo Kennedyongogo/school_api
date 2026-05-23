@@ -25,7 +25,7 @@ const { examAccessPolicyForMode, normalizeMode } = require("../utils/examProctor
 const { isPdfFormExam } = require("../utils/examPdfForm");
 const {
   autoSubmitElapsedDraftIfNeeded,
-  buildStudentExamAccess,
+  buildStudentExamAccessWithFees,
 } = require("../utils/examSubmissionDuration");
 
 exports.listMyStudentTimetableLessons = async (req, res) => {
@@ -158,7 +158,7 @@ exports.listMyStudentExamSchedules = async (req, res) => {
   try {
     const student = await Student.findOne({
       where: { user_id: req.user?.id },
-      attributes: ["id", "curriculum_id", "curriculum_class_id"],
+      attributes: ["id", "curriculum_id", "curriculum_class_id", "curriculum_class_level_id"],
     });
     if (!student) {
       return res.status(404).json({ success: false, message: "Student profile not found." });
@@ -174,6 +174,12 @@ exports.listMyStudentExamSchedules = async (req, res) => {
       session_status: { [Op.in]: ["scheduled", "live", "completed"] },
     };
     if (student.curriculum_id) where.curriculum_id = student.curriculum_id;
+    if (student.curriculum_class_level_id) {
+      where[Op.or] = [
+        { curriculum_class_level_id: student.curriculum_class_level_id },
+        { curriculum_class_level_id: null },
+      ];
+    }
 
     const rows = await Exam.findAll({
       where,
@@ -227,10 +233,11 @@ exports.listMyStudentExamSchedules = async (req, res) => {
       }
     }
 
-    const data = rows.map((r) => {
+    const data = await Promise.all(
+      rows.map(async (r) => {
       const att = attemptByExam.get(r.id);
       const sub = submissionByExam.get(r.id);
-      const access = buildStudentExamAccess(r, sub, r);
+      const access = await buildStudentExamAccessWithFees(student, r, sub, r);
       const attendance =
         att || sub
           ? {
@@ -286,13 +293,21 @@ exports.listMyStudentExamSchedules = async (req, res) => {
         attendance,
         can_open: access.can_open,
         open_block_reason: access.open_block_reason,
+        fee_payment_required: Boolean(access.fee_payment_required),
+        fee_block_message: null,
+        fee_required_amount: access.fee_required_amount ?? null,
+        fee_amount_paid: access.fee_amount_paid ?? null,
+        fee_amount_shortfall: access.fee_amount_shortfall ?? null,
+        fee_access: access.fee_access || null,
+        exam_fee_access_mode: access.exam_fee_access_mode || r.exam_fee_access_mode || "none",
         duration_minutes: access.duration_minutes,
         duration_deadline: access.duration_deadline,
         duration_elapsed: access.duration_elapsed,
         remaining_seconds: access.remaining_seconds,
         submission_status: access.submission_status,
       };
-    });
+    })
+    );
 
     return res.json({ success: true, data });
   } catch (error) {

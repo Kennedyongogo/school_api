@@ -6,6 +6,7 @@ const {
   Teacher,
   Curriculum,
   CurriculumClass,
+  CurriculumClassLevel,
 } = require("../models");
 const { normalizeEmail, normalizeUsername, duplicateUserWhere } = require("../utils/userIdentity");
 const { convertToRelativePath } = require("../utils/filePath");
@@ -26,6 +27,12 @@ const studentListIncludes = [
     model: CurriculumClass,
     as: "curriculum_class",
     attributes: ["id", "name", "code", "curriculum_id"],
+    required: false,
+  },
+  {
+    model: CurriculumClassLevel,
+    as: "curriculum_class_level",
+    attributes: ["id", "name", "curriculum_class_id"],
     required: false,
   },
 ];
@@ -200,17 +207,7 @@ exports.getMyStudentProfile = async (req, res) => {
   try {
     const row = await Student.findOne({
       where: { user_id: req.user.id },
-      include: [
-        { model: User, as: "user", attributes: userExclude },
-        {
-          model: Teacher,
-          as: "class_teacher",
-          required: false,
-          include: [{ model: User, as: "user", attributes: userExclude }],
-        },
-        { model: Curriculum, as: "curriculum", attributes: ["id", "name", "type"], required: false },
-        { model: CurriculumClass, as: "curriculum_class", attributes: ["id", "name", "code"], required: false },
-      ],
+      include: studentListIncludes,
     });
     if (!row) {
       return res.status(404).json({ success: false, message: "Student profile not found" });
@@ -266,6 +263,7 @@ exports.createStudent = async (req, res) => {
     gender,
     curriculum_id,
     curriculum_class_id,
+    curriculum_class_level_id,
     enrollment_date,
     graduation_year,
     blood_group,
@@ -305,6 +303,7 @@ exports.createStudent = async (req, res) => {
     gender,
     curriculum_id: placement.curriculum_id,
     curriculum_class_id: placement.curriculum_class_id,
+    curriculum_class_level_id: body.curriculum_class_level_id || null,
     enrollment_date,
     graduation_year,
     blood_group,
@@ -424,6 +423,9 @@ exports.updateStudent = async (req, res) => {
       return res.status(400).json({ success: false, message: placement.error });
     }
     if (placement) Object.assign(patch, placement);
+    if (body.curriculum_class_level_id !== undefined) {
+      patch.curriculum_class_level_id = body.curriculum_class_level_id || null;
+    }
 
     const pic = resolveStudentProfilePicture(req, student);
     if (pic !== undefined) patch.profile_picture = pic;

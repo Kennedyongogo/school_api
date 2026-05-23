@@ -52,10 +52,11 @@ const {
 } = require("../utils/examProctoring");
 const {
   autoSubmitElapsedDraftIfNeeded,
-  buildStudentExamAccess,
+  buildStudentExamAccessWithFees,
   syncProctoringAttemptWithSubmission,
   logProctoringEvent,
 } = require("../utils/examSubmissionDuration");
+const { evaluateExamFeeAccess, EXAM_FEE_MODES } = require("../utils/feeBillingService");
 const { isPdfFormExam, EXAM_PDF_FORM_TYPE } = require("../utils/examPdfForm");
 const { finalizePdfFormSubmission } = require("./examPdfFormController");
 
@@ -1045,6 +1046,21 @@ exports.createExam = async (req, res) => {
       { ...body, proctoring_mode: body.proctoring_mode || createPayload.proctoring_mode || "record_only" },
       createPayload
     );
+    const feeMode = String(body.exam_fee_access_mode || "none").trim();
+    createPayload.exam_fee_access_mode = EXAM_FEE_MODES.includes(feeMode) ? feeMode : "none";
+    if (feeMode === "custom_minimum") {
+      const minAmt = Number(body.exam_fee_minimum_amount);
+      if (!Number.isFinite(minAmt) || minAmt <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Custom minimum fee access requires a minimum amount (KES) greater than zero.",
+        });
+      }
+      createPayload.exam_fee_minimum_amount = minAmt;
+      createPayload.exam_fee_minimum_basis = null;
+    } else if (body.exam_fee_minimum_amount !== undefined && body.exam_fee_minimum_amount !== "") {
+      createPayload.exam_fee_minimum_amount = Number(body.exam_fee_minimum_amount);
+    }
     const row = await Exam.create(createPayload, { transaction: tx });
     const meetingPatch = meetingFieldsForProctoringMode(row, row.proctoring_mode);
     if (Object.keys(meetingPatch).length) {
@@ -1105,6 +1121,9 @@ exports.updateExam = async (req, res) => {
       "meeting_host_url",
       "exam_type",
       "pdf_answer_key_json",
+      "exam_fee_access_mode",
+      "exam_fee_minimum_amount",
+      "exam_fee_minimum_basis",
     ];
     const patch = {};
     for (const k of allowed) {
@@ -1124,6 +1143,22 @@ exports.updateExam = async (req, res) => {
     }
     const nextMode = patch.proctoring_mode ?? row.proctoring_mode;
     Object.assign(patch, meetingFieldsForProctoringMode(row, nextMode));
+    const nextFeeMode = String(patch.exam_fee_access_mode ?? row.exam_fee_access_mode ?? "none").trim();
+    if (nextFeeMode === "custom_minimum") {
+      const minRaw =
+        patch.exam_fee_minimum_amount !== undefined
+          ? patch.exam_fee_minimum_amount
+          : row.exam_fee_minimum_amount;
+      const minAmt = Number(minRaw);
+      if (!Number.isFinite(minAmt) || minAmt <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Custom minimum fee access requires a minimum amount (KES) greater than zero.",
+        });
+      }
+      patch.exam_fee_minimum_amount = minAmt;
+      patch.exam_fee_minimum_basis = null;
+    }
     await row.update(patch);
     if (Array.isArray(req.body.questions)) {
       // Check if there are any submissions for this exam
@@ -1279,6 +1314,16 @@ exports.createExamSubmission = async (req, res) => {
     const student = await findStudentByUser(req.user?.id);
     if (!student) return res.status(403).json({ success: false, message: "Student profile not found for this user." });
 
+    const feeAccess = await evaluateExamFeeAccess(student, exam);
+    if (!feeAccess.allowed) {
+      return res.status(403).json({
+        success: false,
+        message: feeAccess.user_message || feeAccess.message || "Fee payment required before starting this exam.",
+        code: "EXAM_FEE_NOT_MET",
+        fee_access: feeAccess,
+      });
+    }
+
     const submittedCount = await ExamSubmission.count({
       where: { exam_id: exam.id, student_id: student.id, status: "submitted" },
     });
@@ -1341,7 +1386,7 @@ exports.getMyExamSubmission = async (req, res) => {
         order: [["created_at", "DESC"], [{ model: ExamAnswer, as: "answers" }, "created_at", "ASC"]],
       });
     }
-    const access = buildStudentExamAccess(exam, submission);
+    const access = await buildStudentExamAccessWithFees(student, exam, submission, exam);
     return res.json({
       success: true,
       data: submission,
