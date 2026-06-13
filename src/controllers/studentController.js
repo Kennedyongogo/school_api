@@ -148,7 +148,9 @@ function resolveStudentProfilePicture(req, existingStudent) {
 exports.listStudents = async (req, res) => {
   try {
     const classIdRaw = req.query.curriculum_class_id;
+    const levelIdRaw = req.query.curriculum_class_level_id;
     const hasClassFilter = classIdRaw != null && String(classIdRaw).trim() !== "";
+    const hasLevelFilter = levelIdRaw != null && String(levelIdRaw).trim() !== "";
 
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limitCap = hasClassFilter ? 500 : 100;
@@ -163,6 +165,9 @@ exports.listStudents = async (req, res) => {
     const where = {};
     if (hasClassFilter) {
       where.curriculum_class_id = String(classIdRaw).trim();
+    }
+    if (hasLevelFilter) {
+      where.curriculum_class_level_id = String(levelIdRaw).trim();
     }
 
     const { count, rows } = await Student.findAndCountAll({

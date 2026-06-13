@@ -25,8 +25,12 @@ const { examAccessPolicyForMode, normalizeMode } = require("../utils/examProctor
 const { isPdfFormExam } = require("../utils/examPdfForm");
 const {
   autoSubmitElapsedDraftIfNeeded,
-  buildStudentExamAccessWithFees,
+  buildStudentExamAccess,
 } = require("../utils/examSubmissionDuration");
+const {
+  isStudentAssignedToExam,
+  indexSubmissionsByExam,
+} = require("../utils/examAssignedStudents");
 
 exports.listMyStudentTimetableLessons = async (req, res) => {
   try {
@@ -86,8 +90,8 @@ exports.listMyStudentTimetableLessons = async (req, res) => {
         },
       ],
       order: [
-        ["lesson_date", "ASC"],
-        ["starts_at", "ASC"],
+        ["lesson_date", "DESC"],
+        ["starts_at", "DESC"],
       ],
     });
 
@@ -175,10 +179,7 @@ exports.listMyStudentExamSchedules = async (req, res) => {
     };
     if (student.curriculum_id) where.curriculum_id = student.curriculum_id;
     if (student.curriculum_class_level_id) {
-      where[Op.or] = [
-        { curriculum_class_level_id: student.curriculum_class_level_id },
-        { curriculum_class_level_id: null },
-      ];
+      where.curriculum_class_level_id = student.curriculum_class_level_id;
     }
 
     const rows = await Exam.findAll({
@@ -198,7 +199,9 @@ exports.listMyStudentExamSchedules = async (req, res) => {
       order: [["start_time", "DESC"]],
     });
 
-    const examIds = rows.map((r) => r.id);
+    const assignedRows = rows.filter((r) => isStudentAssignedToExam(r, student.id));
+
+    const examIds = assignedRows.map((r) => r.id);
     const [attempts, submissions] = await Promise.all([
       examIds.length
         ? ExamAttempt.findAll({
@@ -220,12 +223,9 @@ exports.listMyStudentExamSchedules = async (req, res) => {
     for (const a of attempts) {
       if (!attemptByExam.has(a.exam_id)) attemptByExam.set(a.exam_id, a);
     }
-    const submissionByExam = new Map();
-    for (const s of submissions) {
-      if (!submissionByExam.has(s.exam_id)) submissionByExam.set(s.exam_id, s);
-    }
+    const submissionByExam = indexSubmissionsByExam(submissions);
 
-    for (const r of rows) {
+    for (const r of assignedRows) {
       let sub = submissionByExam.get(r.id);
       if (sub?.status === "draft") {
         sub = await autoSubmitElapsedDraftIfNeeded(sub, r, student.id);
@@ -234,10 +234,10 @@ exports.listMyStudentExamSchedules = async (req, res) => {
     }
 
     const data = await Promise.all(
-      rows.map(async (r) => {
+      assignedRows.map(async (r) => {
       const att = attemptByExam.get(r.id);
       const sub = submissionByExam.get(r.id);
-      const access = await buildStudentExamAccessWithFees(student, r, sub, r);
+      const access = buildStudentExamAccess(r, sub, r);
       const attendance =
         att || sub
           ? {
@@ -293,13 +293,6 @@ exports.listMyStudentExamSchedules = async (req, res) => {
         attendance,
         can_open: access.can_open,
         open_block_reason: access.open_block_reason,
-        fee_payment_required: Boolean(access.fee_payment_required),
-        fee_block_message: null,
-        fee_required_amount: access.fee_required_amount ?? null,
-        fee_amount_paid: access.fee_amount_paid ?? null,
-        fee_amount_shortfall: access.fee_amount_shortfall ?? null,
-        fee_access: access.fee_access || null,
-        exam_fee_access_mode: access.exam_fee_access_mode || r.exam_fee_access_mode || "none",
         duration_minutes: access.duration_minutes,
         duration_deadline: access.duration_deadline,
         duration_elapsed: access.duration_elapsed,

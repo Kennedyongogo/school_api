@@ -45,8 +45,6 @@ async function ensureUnifiedExamSchema() {
     if (!examNames.has("session_status")) await addExamCol(`ALTER TABLE exams ADD COLUMN session_status VARCHAR(32)`);
     if (!examNames.has("is_active"))
       await addExamCol(`ALTER TABLE exams ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT true`);
-    if (!examNames.has("allow_late_join_minutes"))
-      await addExamCol(`ALTER TABLE exams ADD COLUMN allow_late_join_minutes INTEGER NOT NULL DEFAULT 10`);
     if (!examNames.has("proctoring_mode"))
       await addExamCol(`ALTER TABLE exams ADD COLUMN proctoring_mode VARCHAR(32) NOT NULL DEFAULT 'record_only'`);
     await q(`
@@ -77,6 +75,18 @@ async function ensureUnifiedExamSchema() {
     if (!examNames.has("pdf_field_schema_json")) await addExamCol(`ALTER TABLE exams ADD COLUMN pdf_field_schema_json JSONB`);
     if (!examNames.has("pdf_answer_key_json")) await addExamCol(`ALTER TABLE exams ADD COLUMN pdf_answer_key_json JSONB`);
     await q(`UPDATE exams SET exam_type = 'questions' WHERE exam_type IS NULL OR TRIM(exam_type) = ''`);
+    if (examNames.has("allow_late_join_minutes")) {
+      await q(`ALTER TABLE exams DROP COLUMN IF EXISTS allow_late_join_minutes`);
+    }
+    if (examNames.has("max_attempts")) {
+      await q(`ALTER TABLE exams DROP COLUMN IF EXISTS max_attempts`);
+    }
+    if (examNames.has("allow_retake")) {
+      await q(`ALTER TABLE exams DROP COLUMN IF EXISTS allow_retake`);
+    }
+    if (!examNames.has("assigned_student_ids")) {
+      await addExamCol(`ALTER TABLE exams ADD COLUMN assigned_student_ids JSONB NOT NULL DEFAULT '[]'::jsonb`);
+    }
   }
 
   const [subCols] = await sequelize.query(`

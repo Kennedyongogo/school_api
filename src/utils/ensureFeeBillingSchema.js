@@ -21,14 +21,14 @@ async function ensureFeeBillingSchema() {
   `);
   const examNames = new Set((examCols || []).map((r) => r.column_name));
   if (examNames.size > 0) {
-    if (!examNames.has("exam_fee_access_mode")) {
-      await q(`ALTER TABLE exams ADD COLUMN exam_fee_access_mode VARCHAR(32) NOT NULL DEFAULT 'none'`);
+    if (examNames.has("exam_fee_access_mode")) {
+      await q(`ALTER TABLE exams DROP COLUMN IF EXISTS exam_fee_access_mode`);
     }
-    if (!examNames.has("exam_fee_minimum_amount")) {
-      await q(`ALTER TABLE exams ADD COLUMN exam_fee_minimum_amount DECIMAL(12, 2)`);
+    if (examNames.has("exam_fee_minimum_amount")) {
+      await q(`ALTER TABLE exams DROP COLUMN IF EXISTS exam_fee_minimum_amount`);
     }
-    if (!examNames.has("exam_fee_minimum_basis")) {
-      await q(`ALTER TABLE exams ADD COLUMN exam_fee_minimum_basis VARCHAR(16) DEFAULT 'total'`);
+    if (examNames.has("exam_fee_minimum_basis")) {
+      await q(`ALTER TABLE exams DROP COLUMN IF EXISTS exam_fee_minimum_basis`);
     }
   }
 

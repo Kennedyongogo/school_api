@@ -74,7 +74,6 @@ exports.issueExamScheduleLiveKitToken = async (req, res) => {
       start_time: schedule.start_time,
       end_time: schedule.end_time,
       session_status: schedule.session_status,
-      allow_late_join_minutes: schedule.allow_late_join_minutes,
       is_staff: staff,
     });
 

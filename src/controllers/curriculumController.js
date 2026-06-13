@@ -257,7 +257,10 @@ exports.listPublicCurriculumClasses = async (req, res) => {
     const curriculumId = req.params.curriculumId;
     const classes = await CurriculumClass.findAll({
       where: { curriculum_id: curriculumId, is_active: true },
-      order: [["name", "ASC"]],
+      order: [
+        ["created_at", "DESC"],
+        ["name", "ASC"],
+      ],
       attributes: ["id", "name", "code", "description", "period"],
     });
     return res.json({ success: true, data: classes });

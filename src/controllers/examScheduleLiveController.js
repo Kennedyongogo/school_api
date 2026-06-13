@@ -46,7 +46,6 @@ exports.getExamLiveRoom = async (req, res) => {
       start_time: exam.start_time,
       end_time: exam.end_time,
       session_status: exam.session_status,
-      allow_late_join_minutes: exam.allow_late_join_minutes,
       is_staff: staff,
     });
 

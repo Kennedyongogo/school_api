@@ -1,4 +1,8 @@
 const { ExamAttempt, ExamSessionLog } = require("../models");
+const {
+  isWithinExamScheduleWindow,
+  isBeforeExamScheduleStart,
+} = require("./examAssignedStudents");
 const { normalizeMode, usesActivityMonitor } = require("./examProctoring");
 
 function durationLimitMs(exam) {
@@ -178,34 +182,6 @@ async function autoSubmitElapsedDraftIfNeeded(submission, exam, studentId) {
   return submission;
 }
 
-function mergeFeeAccessIntoExamAccess(access, feeAccess) {
-  if (!feeAccess || feeAccess.allowed !== false) {
-    return {
-      ...access,
-      fee_access: feeAccess || { allowed: true },
-    };
-  }
-  return {
-    ...access,
-    fee_payment_required: true,
-    open_block_reason: access.open_block_reason || "fee_not_met",
-    fee_block_message: null,
-    exam_fee_access_mode: feeAccess.mode,
-    fee_required_amount: feeAccess.required_amount ?? null,
-    fee_amount_paid: feeAccess.amount_paid ?? feeAccess.allocation?.total_paid ?? null,
-    fee_amount_shortfall: feeAccess.amount_shortfall ?? null,
-    fee_access: feeAccess,
-  };
-}
-
-async function buildStudentExamAccessWithFees(student, exam, submission, scheduleRow = {}) {
-  const { evaluateExamFeeAccess } = require("./feeBillingService");
-  const base = buildStudentExamAccess(exam, submission, scheduleRow);
-  if (!student || !exam) return base;
-  const feeAccess = await evaluateExamFeeAccess(student, exam);
-  return mergeFeeAccessIntoExamAccess(base, feeAccess);
-}
-
 function buildStudentExamAccess(exam, submission, scheduleRow = {}) {
   const duration = getSubmissionDurationState(exam, submission);
   const scheduleEndMs = scheduleRow.end_time ? new Date(scheduleRow.end_time).getTime() : null;
@@ -214,14 +190,19 @@ function buildStudentExamAccess(exam, submission, scheduleRow = {}) {
     submission?.status === "submitted" || Boolean(submission?.submitted_at);
   const sessionStatus = String(scheduleRow.session_status || scheduleRow.status || "").toLowerCase();
   const sessionOpen = ["scheduled", "live"].includes(sessionStatus);
+  const inScheduleWindow = isWithinExamScheduleWindow(scheduleRow);
+  const beforeStart = isBeforeExamScheduleStart(scheduleRow);
 
   let can_open = true;
   let open_block_reason = null;
 
-  if (submitted) {
+  if (beforeStart) {
+    can_open = false;
+    open_block_reason = "schedule_not_started";
+  } else if (submitted) {
     can_open = false;
     open_block_reason = "already_submitted";
-  } else if (duration.duration_elapsed) {
+  } else if (duration.duration_elapsed && !inScheduleWindow) {
     can_open = false;
     open_block_reason = "duration_elapsed";
   } else if (scheduleWindowElapsed) {
@@ -240,6 +221,7 @@ function buildStudentExamAccess(exam, submission, scheduleRow = {}) {
     submission_started_at: submission?.started_at || null,
     submission_submitted_at: submission?.submitted_at || null,
     schedule_window_elapsed: scheduleWindowElapsed,
+    schedule_window_open: inScheduleWindow,
   };
 }
 
@@ -247,8 +229,6 @@ module.exports = {
   getSubmissionDurationState,
   autoSubmitElapsedDraftIfNeeded,
   buildStudentExamAccess,
-  buildStudentExamAccessWithFees,
-  mergeFeeAccessIntoExamAccess,
   syncProctoringAttemptWithSubmission,
   logProctoringEvent,
   latestAttemptByStudent,

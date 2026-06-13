@@ -68,11 +68,6 @@ module.exports = (sequelize) => {
         type: DataTypes.BOOLEAN,
         defaultValue: true,
       },
-      allow_late_join_minutes: {
-        type: DataTypes.INTEGER,
-        allowNull: false,
-        defaultValue: 10,
-      },
       proctoring_mode: {
         type: DataTypes.STRING(32),
         allowNull: false,
@@ -140,14 +135,6 @@ module.exports = (sequelize) => {
         type: DataTypes.BOOLEAN,
         defaultValue: true,
       },
-      allow_retake: {
-        type: DataTypes.BOOLEAN,
-        defaultValue: false,
-      },
-      max_attempts: {
-        type: DataTypes.INTEGER,
-        defaultValue: 1,
-      },
       instructions: {
         type: DataTypes.TEXT,
         allowNull: true,
@@ -161,19 +148,10 @@ module.exports = (sequelize) => {
         type: DataTypes.ENUM("draft", "published", "archived"),
         defaultValue: "draft",
       },
-      exam_fee_access_mode: {
-        type: DataTypes.STRING(32),
+      assigned_student_ids: {
+        type: DataTypes.JSONB,
         allowNull: false,
-        defaultValue: "none",
-      },
-      exam_fee_minimum_amount: {
-        type: DataTypes.DECIMAL(12, 2),
-        allowNull: true,
-      },
-      exam_fee_minimum_basis: {
-        type: DataTypes.STRING(16),
-        allowNull: true,
-        defaultValue: "total",
+        defaultValue: [],
       },
       created_by: {
         type: DataTypes.UUID,

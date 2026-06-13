@@ -10,8 +10,6 @@ const {
   CurriculumClassLevel,
 } = require("../models");
 
-const EXAM_FEE_MODES = ["none", "first_half_paid", "full_fee_paid", "custom_minimum"];
-
 function money(n) {
   return Math.round(Number(n || 0) * 100) / 100;
 }
@@ -275,129 +273,6 @@ async function recordPayment({
   return { payment, invoice: reloaded, payment_receipt: receipt };
 }
 
-/** Custom minimum uses only `exam_fee_minimum_amount` — not full fee or 1st-half rules. */
-function requiredAmountForCustom(exam) {
-  const explicitRaw = exam?.exam_fee_minimum_amount;
-  const explicit =
-    explicitRaw != null && String(explicitRaw).trim() !== "" ? money(explicitRaw) : null;
-  if (explicit == null || explicit <= 0) {
-    return {
-      error:
-        "This exam is set to custom minimum fee but no amount was configured. Ask the school to set the minimum amount (KES) on the exam.",
-    };
-  }
-  return { amount: explicit };
-}
-
-function buildCustomMinimumFeeMessage(required, paid, shortfall) {
-  return (
-    `This exam requires a minimum fee of KES ${required.toLocaleString()} before you can open it. ` +
-    `You have paid KES ${paid.toLocaleString()}. ` +
-    (shortfall > 0.01
-      ? `Please pay KES ${shortfall.toLocaleString()} more under School fees, then try again.`
-      : "Your payments meet this requirement — refresh the page if the button is still disabled.")
-  );
-}
-
-async function evaluateExamFeeAccess(student, exam) {
-  const mode = String(exam?.exam_fee_access_mode || "none").trim();
-  if (!EXAM_FEE_MODES.includes(mode) || mode === "none") {
-    return { allowed: true, mode, message: null, allocation: null };
-  }
-
-  if (!student) {
-    return { allowed: false, mode, message: "Student profile not found.", allocation: null };
-  }
-
-  const feeStructure = await resolveFeeStructureForStudent(student);
-  if (!feeStructure) {
-    return {
-      allowed: false,
-      mode,
-      message: "No fee structure for your class and level. Contact the school.",
-      allocation: null,
-    };
-  }
-
-  const levelId = student.curriculum_class_level_id;
-  const snapshot = buildFeeSnapshot(feeStructure);
-  const allocation = await getPaymentAllocation(student.id, levelId, snapshot);
-
-  if (mode === "first_half_paid") {
-    if (allocation.first_half_satisfied) {
-      return { allowed: true, mode, message: null, allocation };
-    }
-    const userMessage = `The first half of your term fee (KES ${allocation.first_half_amount.toLocaleString()}) must be paid before this exam. You have paid KES ${allocation.total_paid.toLocaleString()} so far.`;
-    return {
-      allowed: false,
-      mode,
-      message: userMessage,
-      user_message: userMessage,
-      allocation,
-      required_amount: allocation.first_half_amount,
-      amount_paid: allocation.total_paid,
-      amount_shortfall: Math.max(0, money(allocation.first_half_amount - allocation.total_paid)),
-    };
-  }
-
-  if (mode === "full_fee_paid") {
-    if (allocation.full_fee_satisfied) {
-      return { allowed: true, mode, message: null, allocation };
-    }
-    const userMessage = `The full term fee (KES ${allocation.term_total.toLocaleString()}) must be paid before this exam. You have paid KES ${allocation.total_paid.toLocaleString()} so far.`;
-    return {
-      allowed: false,
-      mode,
-      message: userMessage,
-      user_message: userMessage,
-      allocation,
-      required_amount: allocation.term_total,
-      amount_paid: allocation.total_paid,
-      amount_shortfall: Math.max(0, money(allocation.term_total - allocation.total_paid)),
-    };
-  }
-
-  if (mode === "custom_minimum") {
-    const req = requiredAmountForCustom(exam);
-    if (req.error) {
-      return {
-        allowed: false,
-        mode,
-        message: req.error,
-        user_message: req.error,
-        allocation,
-      };
-    }
-    const required = req.amount;
-    const paid = money(allocation.total_paid);
-    const shortfall = Math.max(0, money(required - paid));
-    if (paid >= required - 0.01) {
-      return {
-        allowed: true,
-        mode,
-        message: null,
-        allocation,
-        required_amount: required,
-        amount_paid: paid,
-        amount_shortfall: 0,
-      };
-    }
-    const userMessage = buildCustomMinimumFeeMessage(required, paid, shortfall);
-    return {
-      allowed: false,
-      mode,
-      message: userMessage,
-      user_message: userMessage,
-      allocation,
-      required_amount: required,
-      amount_paid: paid,
-      amount_shortfall: shortfall,
-    };
-  }
-
-  return { allowed: true, mode, message: null, allocation };
-}
-
 function formatInvoiceDocument(invoice, student, parentUser, payments = []) {
   const snap = invoice.fee_snapshot_json || {};
   const breakdown = Array.isArray(snap.payment_breakdown) ? snap.payment_breakdown : [];
@@ -440,7 +315,6 @@ function formatInvoiceDocument(invoice, student, parentUser, payments = []) {
 }
 
 module.exports = {
-  EXAM_FEE_MODES,
   money,
   resolveFeeStructureForStudent,
   findParentForStudent,
@@ -449,7 +323,6 @@ module.exports = {
   recordPayment,
   recalcInvoiceTotals,
   getPaymentAllocation,
-  evaluateExamFeeAccess,
   formatInvoiceDocument,
   sumPaymentsForStudentLevel,
   buildPaymentReceipt,
