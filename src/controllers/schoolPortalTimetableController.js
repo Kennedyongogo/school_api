@@ -17,9 +17,17 @@ const {
   ExamQuestion,
   StudentExamResult,
 } = require("../models");
-const { Op, Sequelize } = require("sequelize");
+const { Op } = require("sequelize");
 
 const userSafe = { attributes: { exclude: ["password_hash"] } };
+
+function studentExamSortTimestamp(row) {
+  for (const key of ["start_time", "created_at", "end_time", "updated_at"]) {
+    const t = row?.[key] ? new Date(row[key]).getTime() : NaN;
+    if (Number.isFinite(t)) return t;
+  }
+  return 0;
+}
 const { getLessonJoinWindow } = require("../utils/lessonJoinWindow");
 const { examAccessPolicyForMode, normalizeMode } = require("../utils/examProctoring");
 const { isPdfFormExam } = require("../utils/examPdfForm");
@@ -196,7 +204,7 @@ exports.listMyStudentExamSchedules = async (req, res) => {
           include: [{ model: User, as: "user", ...userSafe }],
         },
       ],
-      order: [["start_time", "DESC"]],
+      // Sort in JS after fetch — ORDER BY created_at/start_time here is ambiguous when includes join other tables.
     });
 
     const assignedRows = rows.filter((r) => isStudentAssignedToExam(r, student.id));
@@ -258,6 +266,8 @@ exports.listMyStudentExamSchedules = async (req, res) => {
         exam_id: r.id,
         start_time: r.start_time,
         end_time: r.end_time,
+        created_at: r.created_at,
+        updated_at: r.updated_at,
         timezone: r.timezone,
         status: r.session_status,
         session_status: r.session_status,
@@ -301,6 +311,8 @@ exports.listMyStudentExamSchedules = async (req, res) => {
       };
     })
     );
+
+    data.sort((a, b) => studentExamSortTimestamp(b) - studentExamSortTimestamp(a));
 
     return res.json({ success: true, data });
   } catch (error) {

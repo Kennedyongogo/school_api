@@ -56,7 +56,7 @@ const {
   syncProctoringAttemptWithSubmission,
   logProctoringEvent,
 } = require("../utils/examSubmissionDuration");
-const { isPdfFormExam, EXAM_PDF_FORM_TYPE } = require("../utils/examPdfForm");
+const { isPdfFormExam, EXAM_PDF_FORM_TYPE, hasManualPdfSubmissionContent } = require("../utils/examPdfForm");
 const { finalizePdfFormSubmission } = require("./examPdfFormController");
 const {
   normalizeAssignedStudentIds,
@@ -1594,13 +1594,12 @@ exports.submitExamSubmission = async (req, res) => {
     if (pdfForm) {
       const answers =
         submission.pdf_answers_json && typeof submission.pdf_answers_json === "object" ? submission.pdf_answers_json : {};
-      const hasAny = Object.values(answers).some((v) => {
-        if (typeof v === "boolean") return v;
-        if (Array.isArray(v)) return v.length > 0;
-        return String(v ?? "").trim() !== "";
-      });
+      const hasAny = hasManualPdfSubmissionContent(answers);
       if (!hasAny && !autoSubmitNoAnswerAllowed) {
-        return res.status(400).json({ success: false, message: "Fill in at least one form field before submitting." });
+        return res.status(400).json({
+          success: false,
+          message: "Add at least one typed answer or upload your working paper before submitting.",
+        });
       }
     } else {
       const requiredQuestions = (submission.exam?.questions || []).filter((q) => q.required);

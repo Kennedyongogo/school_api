@@ -25,6 +25,8 @@ const {
   updateExamPdfAnswerKey,
   getExamPdfTemplate,
   saveSubmissionPdfAnswers,
+  uploadSubmissionPdfWorkingPaper,
+  deleteSubmissionPdfWorkingPaper,
 } = require("../controllers/examPdfFormController");
 const {
   listOnlineExamsUpcoming,
@@ -40,6 +42,7 @@ const { errorHandler } = require("../middleware/errorHandler");
 const {
   uploadDocument,
   uploadExamAnswerFile,
+  uploadExamPdfWorkingPaper,
   uploadExamPdfTemplate: uploadExamPdfTemplateMw,
   handleUploadError,
 } = require("../middleware/upload");
@@ -79,6 +82,20 @@ router.post(
 router.put("/:id/pdf-answer-key", authenticateUser, authorizeRoles(TEACH_OR_STAFF), updateExamPdfAnswerKey);
 router.get("/:id/pdf-template", authenticateUser, getExamPdfTemplate);
 router.put("/submissions/:submissionId/pdf-answers", authenticateUser, authorizeRoles(["student"]), saveSubmissionPdfAnswers);
+router.post(
+  "/submissions/:submissionId/pdf-working-papers",
+  authenticateUser,
+  authorizeRoles(["student"]),
+  uploadExamPdfWorkingPaper,
+  handleUploadError,
+  uploadSubmissionPdfWorkingPaper
+);
+router.delete(
+  "/submissions/:submissionId/pdf-working-papers/:fileId",
+  authenticateUser,
+  authorizeRoles(["student"]),
+  deleteSubmissionPdfWorkingPaper
+);
 router.get("/:id", authenticateUser, authorizeRoles(TEACH_OR_STAFF), getExam);
 router.put("/:id", authenticateUser, authorizeRoles(SCHOOL_ADMIN_ROLES), updateExam);
 router.delete("/:id", authenticateUser, authorizeRoles(SCHOOL_ADMIN_ROLES), deleteExam);

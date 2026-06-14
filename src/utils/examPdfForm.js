@@ -7,6 +7,7 @@ const PDFDocumentKit = require("pdfkit");
 const EXAM_PDF_FORM_TYPE = "pdf_form";
 const PDF_SOURCE_ACROFORM = "acroform";
 const PDF_SOURCE_FLAT = "flat";
+const PDF_SOURCE_MANUAL = "manual";
 
 function isPdfFormExam(exam) {
   return String(exam?.exam_type || "").trim() === EXAM_PDF_FORM_TYPE;
@@ -182,16 +183,97 @@ async function extractPdfFormSchema(pdfBytes) {
   return { schema, fieldCount: schema.length, pdf_source_type: PDF_SOURCE_ACROFORM };
 }
 
-/** AcroForm PDFs use embedded fields; Word-printed PDFs use text-inferred answer fields. */
-async function buildPdfExamSchema(pdfBytes) {
-  const acro = await extractPdfFormSchema(pdfBytes);
-  if (acro.fieldCount > 0) return acro;
-  const text = await extractPdfText(pdfBytes);
-  if (!text) {
-    const fallback = inferAnswerFieldsFromPdfText("");
-    return fallback;
+/** Students type question numbers and answers manually — no auto Q1/Q2 fields. */
+async function buildPdfExamSchema() {
+  return {
+    schema: [],
+    fieldCount: 0,
+    pdf_source_type: PDF_SOURCE_MANUAL,
+  };
+}
+
+function formatLegacyAnswerValue(value) {
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (Array.isArray(value)) return value.join(", ");
+  return String(value ?? "").trim();
+}
+
+function normalizeManualPdfAnswers(raw) {
+  if (!raw || typeof raw !== "object") {
+    return { mode: PDF_SOURCE_MANUAL, entries: [], working_papers: [] };
   }
-  return inferAnswerFieldsFromPdfText(text);
+  const workingPapers = Array.isArray(raw.working_papers)
+    ? raw.working_papers.map((file, index) => ({
+        id: String(file?.id || `paper-${index + 1}`),
+        url: String(file?.url || "").trim(),
+        name: String(file?.name || "").trim(),
+        mime: String(file?.mime || "").trim(),
+        size: Number.isFinite(Number(file?.size)) ? Number(file.size) : null,
+        uploaded_at: file?.uploaded_at || null,
+      }))
+    : [];
+  if (Array.isArray(raw.entries)) {
+    return {
+      mode: PDF_SOURCE_MANUAL,
+      entries: raw.entries.map((entry, index) => ({
+        id: String(entry?.id || `entry-${index + 1}`),
+        question: String(entry?.question ?? ""),
+        answer: String(entry?.answer ?? ""),
+      })),
+      working_papers: workingPapers.filter((file) => file.url),
+    };
+  }
+  const legacyEntries = Object.entries(raw)
+    .filter(([key]) => !["mode", "entries", "working_papers"].includes(key))
+    .map(([key, value], index) => ({
+      id: `legacy-${index + 1}`,
+      question: key.replace(/^q/i, "Q"),
+      answer: formatLegacyAnswerValue(value),
+    }))
+    .filter((entry) => entry.answer);
+  return { mode: PDF_SOURCE_MANUAL, entries: legacyEntries, working_papers: workingPapers.filter((file) => file.url) };
+}
+
+function hasManualPdfSubmissionContent(raw) {
+  const normalized = normalizeManualPdfAnswers(raw);
+  const hasEntries = normalized.entries.some((entry) => entry.question || entry.answer);
+  const hasPapers = normalized.working_papers.length > 0;
+  return hasEntries || hasPapers;
+}
+
+async function buildManualPdfAnswerSheet({ title, answers }) {
+  const normalized = normalizeManualPdfAnswers(answers);
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocumentKit({ margin: 50 });
+    const chunks = [];
+    doc.on("data", (c) => chunks.push(c));
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
+    doc.fontSize(16).text(title || "Exam — student answers", { underline: true });
+    doc.moveDown();
+    if (!normalized.entries.length && !normalized.working_papers.length) {
+      doc.fontSize(11).text("No answers submitted.");
+    } else {
+      if (normalized.entries.length) {
+        doc.fontSize(13).text("Typed answers", { underline: true });
+        doc.moveDown(0.4);
+        normalized.entries.forEach((entry) => {
+          doc.fontSize(11).text(`Question ${entry.question || "—"}`, { continued: false });
+          doc.fontSize(11).fillColor("#111").text(entry.answer || "—", { indent: 12 });
+          doc.moveDown(0.6);
+        });
+      }
+      if (normalized.working_papers.length) {
+        doc.moveDown(0.4);
+        doc.fontSize(13).text("Uploaded working papers", { underline: true });
+        doc.moveDown(0.4);
+        normalized.working_papers.forEach((file, index) => {
+          doc.fontSize(11).text(`${index + 1}. ${file.name || "Uploaded file"} (${file.mime || "file"})`);
+        });
+      }
+    }
+    doc.end();
+  });
 }
 
 function examPdfSourceType(exam) {
@@ -199,7 +281,12 @@ function examPdfSourceType(exam) {
   if (layout.pdf_source_type) return layout.pdf_source_type;
   const schema = Array.isArray(exam?.pdf_field_schema_json) ? exam.pdf_field_schema_json : [];
   if (schema.some((f) => f?.source === PDF_SOURCE_ACROFORM)) return PDF_SOURCE_ACROFORM;
-  return PDF_SOURCE_FLAT;
+  if (schema.length > 0) return PDF_SOURCE_FLAT;
+  return PDF_SOURCE_MANUAL;
+}
+
+function isManualPdfExam(exam) {
+  return examPdfSourceType(exam) === PDF_SOURCE_MANUAL;
 }
 
 function isFlatPdfExam(exam) {
@@ -301,15 +388,20 @@ module.exports = {
   EXAM_PDF_FORM_TYPE,
   PDF_SOURCE_ACROFORM,
   PDF_SOURCE_FLAT,
+  PDF_SOURCE_MANUAL,
   isPdfFormExam,
   isFlatPdfExam,
+  isManualPdfExam,
   examPdfSourceType,
+  normalizeManualPdfAnswers,
+  hasManualPdfSubmissionContent,
   inferAnswerFieldsFromPdfText,
   extractPdfFormSchema,
   buildPdfExamSchema,
   extractPdfFormAnswers,
   fillPdfFromAnswers,
   buildFlatPdfAnswerSheet,
+  buildManualPdfAnswerSheet,
   gradePdfAnswers,
   readFileBytes,
   readFieldValue,

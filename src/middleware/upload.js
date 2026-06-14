@@ -83,6 +83,8 @@ const storage = multer.diskStorage({
       uploadPath = path.join(__dirname, "..", "..", "uploads", "marketplace-listings");
     } else if (file.fieldname === "exam_answer_file") {
       uploadPath = path.join(__dirname, "..", "..", "uploads", "exam-answers");
+    } else if (file.fieldname === "exam_pdf_working_paper") {
+      uploadPath = path.join(__dirname, "..", "..", "uploads", "exam-pdf-working-papers");
     } else if (file.fieldname === "exam_pdf_template" || file.fieldname === "exam_pdf_completed") {
       uploadPath = path.join(
         __dirname,
@@ -159,11 +161,18 @@ const fileFilter = (req, file, cb) => {
   const isSchoolLogoField = file.fieldname === "school_logo";
   const isTeacherStudentProfilePic =
     file.fieldname === "teacher_profile_picture" || file.fieldname === "student_profile_picture";
+  const isExamPdfWorkingPaper = file.fieldname === "exam_pdf_working_paper";
+  const isExamAnswerFile = file.fieldname === "exam_answer_file";
 
   // Some phones/providers send image uploads as application/octet-stream.
   // Accept by extension for known image fields.
   if (
-    (isMenuImageField || isProfileImageField || isSchoolLogoField || isTeacherStudentProfilePic) &&
+    (isMenuImageField ||
+      isProfileImageField ||
+      isSchoolLogoField ||
+      isTeacherStudentProfilePic ||
+      isExamPdfWorkingPaper ||
+      isExamAnswerFile) &&
     file.mimetype === "application/octet-stream" &&
     hasAllowedImageExtension
   ) {
@@ -205,6 +214,7 @@ const uploadDocument = upload.single("document");
 
 // Student exam answer attachment (image / PDF / document)
 const uploadExamAnswerFile = upload.single("exam_answer_file");
+const uploadExamPdfWorkingPaper = upload.single("exam_pdf_working_paper");
 const uploadExamPdfTemplate = upload.single("exam_pdf_template");
 
 // Middleware for file upload (generic)
@@ -353,6 +363,7 @@ module.exports = {
   uploadProfileImage,
   uploadDocument,
   uploadExamAnswerFile,
+  uploadExamPdfWorkingPaper,
   uploadExamPdfTemplate,
   uploadFile,
   uploadDocuments,
