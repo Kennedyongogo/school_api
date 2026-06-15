@@ -25,6 +25,10 @@ const TeacherCurriculumSubject = require("./teacherCurriculumSubject")(
 const TeacherTeachingCurriculumClass =
   require("./teacherTeachingCurriculumClass")(sequelize);
 const FeeStructure = require("./feeStructure")(sequelize);
+const FeeInvoice = require("./feeInvoice")(sequelize);
+const FeePayment = require("./feePayment")(sequelize);
+const StudentLevelFeeCredit = require("./studentLevelFeeCredit")(sequelize);
+const MpesaStkRequest = require("./mpesaStkRequest")(sequelize);
 const AcademicTerm = require("./academicTerm")(sequelize);
 const Installment = require("./installment")(sequelize);
 const Curriculum = require("./curriculum")(sequelize);
@@ -90,6 +94,10 @@ const models = {
   TeacherCurriculumSubject,
   TeacherTeachingCurriculumClass,
   FeeStructure,
+  FeeInvoice,
+  FeePayment,
+  StudentLevelFeeCredit,
+  MpesaStkRequest,
   AcademicTerm,
   Installment,
   Curriculum,
@@ -128,11 +136,13 @@ const models = {
 };
 
 const { ensureUnifiedExamSchema } = require("../utils/ensureUnifiedExamSchema");
+const { ensureFeeBillingSchema } = require("../utils/ensureFeeBillingSchema");
 
 const initializeModels = async () => {
   try {
     console.log("🔄 Creating/updating school system tables...");
     await ensureUnifiedExamSchema();
+    await ensureFeeBillingSchema();
     await User.sync({ force: false, alter: false });
     await Teacher.sync({ force: false, alter: false });
     await Student.sync({ force: false, alter: false });
@@ -141,6 +151,10 @@ const initializeModels = async () => {
     await Department.sync({ force: false, alter: false });
     await StudentExamResult.sync({ force: false, alter: false });
     await FeeStructure.sync({ force: false, alter: false });
+    await FeeInvoice.sync({ force: false, alter: false });
+    await FeePayment.sync({ force: false, alter: false });
+    await StudentLevelFeeCredit.sync({ force: false, alter: false });
+    await MpesaStkRequest.sync({ force: false, alter: false });
     await AcademicTerm.sync({ force: false, alter: false });
     await SchoolProfile.sync({ force: false, alter: false });
     await ExamTemplate.sync({ force: false, alter: false });
@@ -248,6 +262,14 @@ const setupAssociations = () => {
     Student.belongsTo(CurriculumClass, {
       foreignKey: "curriculum_class_id",
       as: "curriculum_class",
+    });
+    CurriculumClassLevel.hasMany(Student, {
+      foreignKey: "curriculum_class_level_id",
+      as: "students",
+    });
+    Student.belongsTo(CurriculumClassLevel, {
+      foreignKey: "curriculum_class_level_id",
+      as: "curriculum_class_level",
     });
 
 
@@ -488,6 +510,54 @@ const setupAssociations = () => {
       foreignKey: "curriculum_class_level_id",
       as: "curriculum_class_level",
     });
+
+    Student.hasMany(FeeInvoice, { foreignKey: "student_id", as: "fee_invoices" });
+    FeeInvoice.belongsTo(Student, { foreignKey: "student_id", as: "student" });
+    Parent.hasMany(FeeInvoice, { foreignKey: "parent_id", as: "fee_invoices" });
+    FeeInvoice.belongsTo(Parent, { foreignKey: "parent_id", as: "parent" });
+    Curriculum.hasMany(FeeInvoice, { foreignKey: "curriculum_id", as: "fee_invoices" });
+    FeeInvoice.belongsTo(Curriculum, { foreignKey: "curriculum_id", as: "curriculum" });
+    CurriculumClass.hasMany(FeeInvoice, { foreignKey: "curriculum_class_id", as: "fee_invoices" });
+    FeeInvoice.belongsTo(CurriculumClass, { foreignKey: "curriculum_class_id", as: "curriculum_class" });
+    CurriculumClassLevel.hasMany(FeeInvoice, {
+      foreignKey: "curriculum_class_level_id",
+      as: "fee_invoices",
+    });
+    FeeInvoice.belongsTo(CurriculumClassLevel, {
+      foreignKey: "curriculum_class_level_id",
+      as: "curriculum_class_level",
+    });
+    FeeStructure.hasMany(FeeInvoice, { foreignKey: "fee_structure_id", as: "fee_invoices" });
+    FeeInvoice.belongsTo(FeeStructure, { foreignKey: "fee_structure_id", as: "fee_structure" });
+
+    FeeInvoice.hasMany(FeePayment, { foreignKey: "fee_invoice_id", as: "payments" });
+    FeePayment.belongsTo(FeeInvoice, { foreignKey: "fee_invoice_id", as: "fee_invoice" });
+    Student.hasMany(FeePayment, { foreignKey: "student_id", as: "fee_payments" });
+    FeePayment.belongsTo(Student, { foreignKey: "student_id", as: "student" });
+    Parent.hasMany(FeePayment, { foreignKey: "parent_id", as: "fee_payments" });
+    FeePayment.belongsTo(Parent, { foreignKey: "parent_id", as: "parent" });
+    User.hasMany(FeePayment, { foreignKey: "recorded_by_user_id", as: "recorded_fee_payments" });
+    FeePayment.belongsTo(User, { foreignKey: "recorded_by_user_id", as: "recorded_by_user" });
+
+    Student.hasMany(StudentLevelFeeCredit, { foreignKey: "student_id", as: "level_fee_credits" });
+    StudentLevelFeeCredit.belongsTo(Student, { foreignKey: "student_id", as: "student" });
+    CurriculumClassLevel.hasMany(StudentLevelFeeCredit, {
+      foreignKey: "curriculum_class_level_id",
+      as: "student_fee_credits",
+    });
+    StudentLevelFeeCredit.belongsTo(CurriculumClassLevel, {
+      foreignKey: "curriculum_class_level_id",
+      as: "curriculum_class_level",
+    });
+
+    FeeInvoice.hasMany(MpesaStkRequest, { foreignKey: "fee_invoice_id", as: "mpesa_stk_requests" });
+    MpesaStkRequest.belongsTo(FeeInvoice, { foreignKey: "fee_invoice_id", as: "fee_invoice" });
+    Parent.hasMany(MpesaStkRequest, { foreignKey: "parent_id", as: "mpesa_stk_requests" });
+    MpesaStkRequest.belongsTo(Parent, { foreignKey: "parent_id", as: "parent" });
+    User.hasMany(MpesaStkRequest, { foreignKey: "initiated_by_user_id", as: "mpesa_stk_requests" });
+    MpesaStkRequest.belongsTo(User, { foreignKey: "initiated_by_user_id", as: "initiated_by_user" });
+    FeePayment.hasOne(MpesaStkRequest, { foreignKey: "fee_payment_id", as: "mpesa_stk_request" });
+    MpesaStkRequest.belongsTo(FeePayment, { foreignKey: "fee_payment_id", as: "fee_payment" });
 
 
     AcademicTerm.hasMany(Installment, {

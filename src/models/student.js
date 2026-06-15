@@ -46,6 +46,13 @@ module.exports = (sequelize) => {
         references: { model: "curriculum_classes", key: "id" },
         onDelete: "SET NULL",
       },
+      /** Current term / level within the class (fee billing & placement). */
+      curriculum_class_level_id: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        references: { model: "curriculum_class_levels", key: "id" },
+        onDelete: "SET NULL",
+      },
       enrollment_date: {
         type: DataTypes.DATEONLY,
         defaultValue: DataTypes.NOW,

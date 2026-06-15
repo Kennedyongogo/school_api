@@ -6,6 +6,7 @@ const {
   Teacher,
   Curriculum,
   CurriculumClass,
+  CurriculumClassLevel,
 } = require("../models");
 const { normalizeEmail, normalizeUsername, duplicateUserWhere } = require("../utils/userIdentity");
 const { convertToRelativePath } = require("../utils/filePath");
@@ -26,6 +27,12 @@ const studentListIncludes = [
     model: CurriculumClass,
     as: "curriculum_class",
     attributes: ["id", "name", "code", "curriculum_id"],
+    required: false,
+  },
+  {
+    model: CurriculumClassLevel,
+    as: "curriculum_class_level",
+    attributes: ["id", "name", "level_order", "curriculum_class_id"],
     required: false,
   },
 ];
@@ -51,6 +58,20 @@ async function resolvePlacementFromClassId(curriculumClassId, curriculumIdHint) 
     return { error: "Selected class does not belong to the chosen curriculum" };
   }
   return { curriculum_id: cc.curriculum_id, curriculum_class_id: cc.id };
+}
+
+async function resolveLevelForClass(curriculumClassId, levelIdRaw) {
+  const levelId =
+    levelIdRaw != null && String(levelIdRaw).trim() !== "" ? String(levelIdRaw).trim() : null;
+  if (!levelId) return { curriculum_class_level_id: null };
+  const level = await CurriculumClassLevel.findByPk(levelId, {
+    attributes: ["id", "curriculum_class_id"],
+  });
+  if (!level) return { error: "Invalid curriculum_class_level_id" };
+  if (String(level.curriculum_class_id) !== String(curriculumClassId)) {
+    return { error: "Term/level does not belong to the selected class" };
+  }
+  return { curriculum_class_level_id: level.id };
 }
 
 /** Apply curriculum / class updates from body; ignores client-supplied class_teacher_id. */
@@ -298,6 +319,13 @@ exports.createStudent = async (req, res) => {
     return res.status(400).json({ success: false, message: placement.error });
   }
   const homeroomTeacherId = await resolveHomeroomTeacherId(placement.curriculum_class_id);
+  const levelPlacement = await resolveLevelForClass(
+    placement.curriculum_class_id,
+    body.curriculum_class_level_id
+  );
+  if (levelPlacement.error) {
+    return res.status(400).json({ success: false, message: levelPlacement.error });
+  }
 
   const studentPayload = {
     admission_number,
@@ -305,6 +333,7 @@ exports.createStudent = async (req, res) => {
     gender,
     curriculum_id: placement.curriculum_id,
     curriculum_class_id: placement.curriculum_class_id,
+    curriculum_class_level_id: levelPlacement.curriculum_class_level_id,
     enrollment_date,
     graduation_year,
     blood_group,
@@ -424,6 +453,21 @@ exports.updateStudent = async (req, res) => {
       return res.status(400).json({ success: false, message: placement.error });
     }
     if (placement) Object.assign(patch, placement);
+
+    if (body.curriculum_class_level_id !== undefined) {
+      const classId = patch.curriculum_class_id ?? student.curriculum_class_id;
+      if (!classId) {
+        return res.status(400).json({
+          success: false,
+          message: "Assign a curriculum class before setting term/level",
+        });
+      }
+      const levelPlacement = await resolveLevelForClass(classId, body.curriculum_class_level_id);
+      if (levelPlacement.error) {
+        return res.status(400).json({ success: false, message: levelPlacement.error });
+      }
+      patch.curriculum_class_level_id = levelPlacement.curriculum_class_level_id;
+    }
 
     const pic = resolveStudentProfilePicture(req, student);
     if (pic !== undefined) patch.profile_picture = pic;

@@ -1,5 +1,14 @@
 const { fn, col } = require("sequelize");
-const { User, SchoolAdmin, Parent, Student, CurriculumClass, Curriculum } = require("../models");
+const {
+  User,
+  SchoolAdmin,
+  Parent,
+  Student,
+  CurriculumClass,
+  Curriculum,
+  CurriculumSubject,
+  CurriculumClassLevel,
+} = require("../models");
 
 /**
  * GET /api/elimu-plus/stats
@@ -133,6 +142,77 @@ exports.getStats = async (req, res) => {
       color_index: index,
     }));
 
+    const activeSubjects = await CurriculumSubject.findAll({
+      attributes: ["id", "curriculum_class_id", "curriculum_class_level_id"],
+      where: { is_active: true },
+      include: [
+        {
+          model: CurriculumClass,
+          as: "curriculum_class",
+          attributes: ["id"],
+          required: false,
+        },
+        {
+          model: CurriculumClassLevel,
+          as: "curriculum_class_level",
+          attributes: ["curriculum_class_id"],
+          required: false,
+        },
+      ],
+    });
+
+    const subjectCountByClassId = new Map();
+    let curriculumWideSubjectCount = 0;
+    for (const subject of activeSubjects) {
+      const plain = subject.get({ plain: true });
+      const classId =
+        plain.curriculum_class_id ||
+        plain.curriculum_class?.id ||
+        plain.curriculum_class_level?.curriculum_class_id ||
+        null;
+      if (classId) {
+        const key = String(classId);
+        subjectCountByClassId.set(key, (subjectCountByClassId.get(key) || 0) + 1);
+      } else {
+        curriculumWideSubjectCount += 1;
+      }
+    }
+
+    const subjectsByClass = classes.map((c) => {
+      const plain = c.get({ plain: true });
+      const curriculumLabel = plain.curriculum?.type || plain.curriculum?.name || "";
+      const classLabel = plain.name || plain.code || "Class";
+      return {
+        class_id: plain.id,
+        class_name: classLabel,
+        class_code: plain.code || null,
+        curriculum_id: plain.curriculum?.id || null,
+        curriculum_name: plain.curriculum?.name || null,
+        label: curriculumLabel ? `${classLabel} (${curriculumLabel})` : classLabel,
+        subject_count: subjectCountByClassId.get(String(plain.id)) || 0,
+      };
+    });
+
+    if (curriculumWideSubjectCount > 0) {
+      subjectsByClass.push({
+        class_id: null,
+        class_name: "Curriculum-wide",
+        class_code: null,
+        curriculum_id: null,
+        curriculum_name: null,
+        label: "Curriculum-wide",
+        subject_count: curriculumWideSubjectCount,
+      });
+    }
+
+    const subjectsBarSeries = subjectsByClass.map((row) => ({
+      x: row.label,
+      y: row.subject_count,
+      class_id: row.class_id,
+    }));
+
+    const totalActiveSubjects = activeSubjects.length;
+
     return res.json({
       success: true,
       data: {
@@ -142,6 +222,7 @@ exports.getStats = async (req, res) => {
           parent_profiles: parentProfilesCount,
           parent_user_accounts: parentUserAccountsCount,
           student_profiles: studentProfilesCount,
+          active_subjects: totalActiveSubjects,
         },
         students_by_class: studentsByClass,
         bar_chart: {
@@ -152,6 +233,12 @@ exports.getStats = async (req, res) => {
             y: row.student_count,
             class_id: row.class_id,
           })),
+        },
+        subjects_by_class: subjectsByClass,
+        subjects_bar_chart: {
+          x_axis: "class",
+          y_axis: "subject_count",
+          series: subjectsBarSeries,
         },
         students_by_curriculum: studentsByCurriculum,
         pie_chart: {

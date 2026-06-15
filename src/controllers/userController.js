@@ -577,19 +577,37 @@ exports.updateUser = async (req, res) => {
       if (req.body[key] !== undefined) patch[key] = req.body[key];
     }
 
-    if (patch.role !== undefined) {
+    if (req.body.role !== undefined) {
+      const requestedRole = req.body.role;
+
       if (!STAFF_ROLES.includes(req.user.role)) {
-        delete patch.role;
-      } else if (patch.role === SUPER_ADMIN_ROLE && req.user.role !== SUPER_ADMIN_ROLE) {
-        delete patch.role;
+        if (requestedRole !== user.role) {
+          return res.status(403).json({
+            success: false,
+            message: "You do not have permission to change user roles",
+          });
+        }
+      } else if (requestedRole === SUPER_ADMIN_ROLE && req.user.role !== SUPER_ADMIN_ROLE) {
+        return res.status(403).json({
+          success: false,
+          message: "Only a super admin can assign the super admin role",
+        });
       } else if (
         user.role === SUPER_ADMIN_ROLE &&
-        patch.role !== SUPER_ADMIN_ROLE &&
+        requestedRole !== SUPER_ADMIN_ROLE &&
         req.user.role !== SUPER_ADMIN_ROLE
       ) {
-        delete patch.role;
-      } else if (patch.role !== undefined && !ALL_USER_ROLES.includes(patch.role)) {
-        delete patch.role;
+        return res.status(403).json({
+          success: false,
+          message: "Only a super admin can change a super admin user's role",
+        });
+      } else if (!ALL_USER_ROLES.includes(requestedRole)) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid role. Allowed: ${ALL_USER_ROLES.join(", ")}`,
+        });
+      } else if (requestedRole !== user.role) {
+        patch.role = requestedRole;
       }
     }
 
