@@ -34,11 +34,8 @@ const schoolReportsRoutes = require("./routes/schoolReportsRoutes");
 const feeStructureRoutes = require("./routes/feeStructureRoutes");
 const feeInvoiceRoutes = require("./routes/feeInvoiceRoutes");
 const feePaymentRoutes = require("./routes/feePaymentRoutes");
-<<<<<<< HEAD
 const mpesaRoutes = require("./routes/mpesaRoutes");
 const { stkCallback } = require("./controllers/mpesaController");
-=======
->>>>>>> dbf38d6042c6ec91a0dd55101879df2f1e151a96
 const curriculumRoutes = require("./routes/curriculumRoutes");
 const newsRoutes = require("./routes/newsRoutes");
 const schoolServiceRoutes = require("./routes/schoolServiceRoutes");
@@ -136,12 +133,9 @@ app.use("/api/reports", schoolReportsRoutes);
 app.use("/api/fee-structures", feeStructureRoutes);
 app.use("/api/fee-invoices", feeInvoiceRoutes);
 app.use("/api/fee-payments", feePaymentRoutes);
-<<<<<<< HEAD
 app.use("/api/mpesa", mpesaRoutes);
 /** Alias for Daraja docs / ngrok setups that use /mpesa/callback */
 app.post("/mpesa/callback", stkCallback);
-=======
->>>>>>> dbf38d6042c6ec91a0dd55101879df2f1e151a96
 app.use("/api/curricula", curriculumRoutes);
 app.use("/api/news", newsRoutes);
 app.use("/api/school-services", schoolServiceRoutes);

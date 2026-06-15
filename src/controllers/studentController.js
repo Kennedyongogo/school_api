@@ -32,11 +32,7 @@ const studentListIncludes = [
   {
     model: CurriculumClassLevel,
     as: "curriculum_class_level",
-<<<<<<< HEAD
     attributes: ["id", "name", "level_order", "curriculum_class_id"],
-=======
-    attributes: ["id", "name", "curriculum_class_id"],
->>>>>>> dbf38d6042c6ec91a0dd55101879df2f1e151a96
     required: false,
   },
 ];
@@ -333,11 +329,7 @@ exports.createStudent = async (req, res) => {
     gender,
     curriculum_id: placement.curriculum_id,
     curriculum_class_id: placement.curriculum_class_id,
-<<<<<<< HEAD
     curriculum_class_level_id: levelPlacement.curriculum_class_level_id,
-=======
-    curriculum_class_level_id: body.curriculum_class_level_id || null,
->>>>>>> dbf38d6042c6ec91a0dd55101879df2f1e151a96
     enrollment_date,
     graduation_year,
     blood_group,
@@ -550,3 +542,4 @@ exports.deleteStudent = async (req, res) => {
     });
   }
 };
+

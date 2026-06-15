@@ -46,11 +46,7 @@ module.exports = (sequelize) => {
         references: { model: "curriculum_classes", key: "id" },
         onDelete: "SET NULL",
       },
-<<<<<<< HEAD
-      /** Current term / level within the class (fee billing & placement). */
-=======
-      /** Term / level within class (FK to `curriculum_class_levels`) — used for fee structure and exams. */
->>>>>>> dbf38d6042c6ec91a0dd55101879df2f1e151a96
+      /** Term / level within class (fee billing, placement, and exams). */
       curriculum_class_level_id: {
         type: DataTypes.UUID,
         allowNull: true,

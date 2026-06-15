@@ -7,10 +7,7 @@ const {
   CurriculumClass,
   Curriculum,
   CurriculumSubject,
-<<<<<<< HEAD
   CurriculumClassLevel,
-=======
->>>>>>> dbf38d6042c6ec91a0dd55101879df2f1e151a96
 } = require("../models");
 
 /**
@@ -33,7 +30,7 @@ exports.getStats = async (req, res) => {
       Student.count(),
     ]);
 
-    const [studentCountRows, curriculumCountRows, subjectCountRows] = await Promise.all([
+    const [studentCountRows, curriculumCountRows] = await Promise.all([
       Student.findAll({
         attributes: ["curriculum_class_id", [fn("COUNT", col("id")), "student_count"]],
         group: ["curriculum_class_id"],
@@ -42,12 +39,6 @@ exports.getStats = async (req, res) => {
       Student.findAll({
         attributes: ["curriculum_id", [fn("COUNT", col("id")), "student_count"]],
         group: ["curriculum_id"],
-        raw: true,
-      }),
-      CurriculumSubject.findAll({
-        attributes: ["curriculum_class_id", [fn("COUNT", col("id")), "subject_count"]],
-        where: { is_active: true },
-        group: ["curriculum_class_id"],
         raw: true,
       }),
     ]);
@@ -103,44 +94,6 @@ exports.getStats = async (req, res) => {
         curriculum_name: null,
         label: "Unassigned",
         student_count: unassignedStudentCount,
-      });
-    }
-
-    const countSubjectsByClassId = new Map();
-    let unassignedSubjectCount = 0;
-    for (const row of subjectCountRows) {
-      const n = Number(row.subject_count) || 0;
-      if (row.curriculum_class_id) {
-        countSubjectsByClassId.set(String(row.curriculum_class_id), n);
-      } else {
-        unassignedSubjectCount += n;
-      }
-    }
-
-    const subjectsByClass = classes.map((c) => {
-      const plain = c.get({ plain: true });
-      const curriculumLabel = plain.curriculum?.type || plain.curriculum?.name || "";
-      const classLabel = plain.name || plain.code || "Class";
-      return {
-        class_id: plain.id,
-        class_name: classLabel,
-        class_code: plain.code || null,
-        curriculum_id: plain.curriculum?.id || null,
-        curriculum_name: plain.curriculum?.name || null,
-        label: curriculumLabel ? `${classLabel} (${curriculumLabel})` : classLabel,
-        subject_count: countSubjectsByClassId.get(String(plain.id)) || 0,
-      };
-    });
-
-    if (unassignedSubjectCount > 0) {
-      subjectsByClass.push({
-        class_id: null,
-        class_name: "Unassigned",
-        class_code: null,
-        curriculum_id: null,
-        curriculum_name: null,
-        label: "Unassigned",
-        subject_count: unassignedSubjectCount,
       });
     }
 
@@ -285,15 +238,7 @@ exports.getStats = async (req, res) => {
         subjects_bar_chart: {
           x_axis: "class",
           y_axis: "subject_count",
-<<<<<<< HEAD
           series: subjectsBarSeries,
-=======
-          series: subjectsByClass.map((row) => ({
-            x: row.label,
-            y: row.subject_count,
-            class_id: row.class_id,
-          })),
->>>>>>> dbf38d6042c6ec91a0dd55101879df2f1e151a96
         },
         students_by_curriculum: studentsByCurriculum,
         pie_chart: {
@@ -307,3 +252,4 @@ exports.getStats = async (req, res) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
+
