@@ -245,7 +245,7 @@ exports.listMyStudentExamSchedules = async (req, res) => {
       assignedRows.map(async (r) => {
       const att = attemptByExam.get(r.id);
       const sub = submissionByExam.get(r.id);
-      const access = buildStudentExamAccess(r, sub, r);
+      const access = buildStudentExamAccess(r, sub, r, att);
       const attendance =
         att || sub
           ? {

@@ -15,6 +15,7 @@ const {
   ExamAttempt,
   ExamSubmission,
 } = require("../models");
+const { isTeacherAttendedForHr } = require("../utils/examProctoring");
 
 exports.getHrAttendanceOverview = async (req, res) => {
   try {
@@ -107,7 +108,7 @@ exports.getHrAttendanceOverview = async (req, res) => {
             starts_at: r.start_time,
             ends_at: r.end_time,
             delivery_mode: "online",
-            teacher_attended: r.session_status === "live" || r.session_status === "completed",
+            teacher_attended: isTeacherAttendedForHr(r),
             proctoring_mode: r.proctoring_mode,
           })),
           student_attendance: attempts.map((a) => ({

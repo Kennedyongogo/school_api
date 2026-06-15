@@ -182,12 +182,15 @@ async function autoSubmitElapsedDraftIfNeeded(submission, exam, studentId) {
   return submission;
 }
 
-function buildStudentExamAccess(exam, submission, scheduleRow = {}) {
+function buildStudentExamAccess(exam, submission, scheduleRow = {}, attempt = null) {
   const duration = getSubmissionDurationState(exam, submission);
   const scheduleEndMs = scheduleRow.end_time ? new Date(scheduleRow.end_time).getTime() : null;
   const scheduleWindowElapsed = Number.isFinite(scheduleEndMs) ? Date.now() > scheduleEndMs : false;
   const submitted =
-    submission?.status === "submitted" || Boolean(submission?.submitted_at);
+    submission?.status === "submitted" ||
+    Boolean(submission?.submitted_at) ||
+    attempt?.status === "completed" ||
+    Boolean(attempt?.submitted_at);
   const sessionStatus = String(scheduleRow.session_status || scheduleRow.status || "").toLowerCase();
   const sessionOpen = ["scheduled", "live"].includes(sessionStatus);
   const inScheduleWindow = isWithinExamScheduleWindow(scheduleRow);

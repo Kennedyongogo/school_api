@@ -49,6 +49,7 @@ const {
   normalizeMode,
   usesActivityMonitor,
   usesLiveVideoInvigilation,
+  markActivityExamInvigilatorPresent,
 } = require("../utils/examProctoring");
 const {
   autoSubmitElapsedDraftIfNeeded,
@@ -1652,6 +1653,13 @@ exports.listExamSubmissionsForMarking = async (req, res) => {
       include: [{ model: ExamQuestion, as: "questions", attributes: ["id", "question_text", "marks", "required", "order_number"] }],
     });
     if (!exam) return res.status(404).json({ success: false, message: "Exam not found" });
+
+    if (usesActivityMonitor(exam.proctoring_mode)) {
+      await markActivityExamInvigilatorPresent(exam, {
+        userId: req.user?.id || null,
+        source: "submissions_marking",
+      });
+    }
 
     const where = { exam_id: exam.id };
     if (req.query.status && ["draft", "submitted"].includes(String(req.query.status))) where.status = String(req.query.status);

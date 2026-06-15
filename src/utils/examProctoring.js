@@ -105,6 +105,58 @@ function isGoogleMeetInvigilationProvider(provider) {
   return p === "google_meet" || p === "googlemeet" || p === "meet";
 }
 
+/** HR / attendance: teacher present when session is live/completed or invigilator checked in. */
+function isTeacherAttendedForHr(exam) {
+  if (!exam) return false;
+  const status = String(exam.session_status || "").toLowerCase();
+  if (status === "live" || status === "completed") return true;
+  const rules = exam.proctoring_rules_json;
+  return !!(rules && typeof rules === "object" && rules.invigilator_present_at);
+}
+
+function teacherAttendedAtForExam(exam) {
+  const rules = exam?.proctoring_rules_json;
+  if (rules && typeof rules === "object" && rules.invigilator_present_at) {
+    return rules.invigilator_present_at;
+  }
+  const status = String(exam?.session_status || "").toLowerCase();
+  if (status === "live" || status === "completed") {
+    return exam.updated_at || null;
+  }
+  return null;
+}
+
+/**
+ * Non-video exams (record_only, strict_auto) never use the video lobby, so session_status
+ * stays scheduled until a teacher opens supervision. Mark live on first staff check-in.
+ */
+async function markActivityExamInvigilatorPresent(exam, { userId = null, source = "activity_supervision" } = {}) {
+  if (!exam?.id) return { marked: false };
+  const mode = normalizeMode(exam.proctoring_mode);
+  if (!usesActivityMonitor(mode)) return { marked: false };
+  const status = String(exam.session_status || "").toLowerCase();
+  if (status === "cancelled" || status === "completed") return { marked: false };
+  if (status === "live") return { marked: false, already: true };
+
+  const prev =
+    exam.proctoring_rules_json && typeof exam.proctoring_rules_json === "object"
+      ? exam.proctoring_rules_json
+      : {};
+  const now = new Date();
+  const presentAt = prev.invigilator_present_at || now.toISOString();
+  await exam.update({
+    session_status: "live",
+    updated_by: userId,
+    proctoring_rules_json: {
+      ...prev,
+      invigilator_present_at: presentAt,
+      invigilator_present_by_user_id: prev.invigilator_present_by_user_id || userId,
+      invigilator_present_source: prev.invigilator_present_source || source,
+    },
+  });
+  return { marked: true };
+}
+
 module.exports = {
   PROCTORING_MODES,
   ACTIVITY_MONITOR_MODES,
@@ -118,4 +170,7 @@ module.exports = {
   usesLiveVideoInvigilation,
   usesLiveKitInvigilation,
   isGoogleMeetInvigilationProvider,
+  isTeacherAttendedForHr,
+  teacherAttendedAtForExam,
+  markActivityExamInvigilatorPresent,
 };

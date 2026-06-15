@@ -13,7 +13,14 @@ const crypto = require("crypto");
 const { isConfigured: liveKitConfigured } = require("../services/livekitService");
 const { resolveExamMeetingUrls } = require("../utils/examMeeting");
 const { examDetailIncludes } = require("../utils/examIncludes");
-const { normalizeMode, usesActivityMonitor, MODE_LABELS } = require("../utils/examProctoring");
+const {
+  normalizeMode,
+  usesActivityMonitor,
+  MODE_LABELS,
+  markActivityExamInvigilatorPresent,
+  isTeacherAttendedForHr,
+  teacherAttendedAtForExam,
+} = require("../utils/examProctoring");
 const {
   syncProctoringAttemptWithSubmission,
   latestAttemptByStudent,
@@ -304,6 +311,11 @@ exports.getExamProctorMonitor = async (req, res) => {
       });
     }
 
+    await markActivityExamInvigilatorPresent(exam, {
+      userId: req.user?.id || null,
+      source: "proctor_monitor",
+    });
+
     const roster = await Student.findAll({
       where: { curriculum_class_id: exam.curriculum_class_id },
       attributes: ["id", "admission_number", "user_id"],
@@ -514,8 +526,8 @@ exports.getExamAttendance = async (req, res) => {
         exam_schedule_id: row.id,
         session_status: row.session_status,
         invigilator: row.teacher || null,
-        invigilator_attended: row.session_status === "live" || row.session_status === "completed",
-        invigilator_attended_at: row.updated_at || null,
+        invigilator_attended: isTeacherAttendedForHr(row),
+        invigilator_attended_at: teacherAttendedAtForExam(row),
         students,
         totals: {
           total_students_seen: students.length,
