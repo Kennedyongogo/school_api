@@ -8,6 +8,7 @@ function normalizePlatform(raw) {
   if (!s) return "";
   if (s === "livekit") return "livekit";
   if (s === "webrtc") return "webrtc";
+  if (s === "google_meet" || s === "googlemeet" || s === "meet") return "google_meet";
   if (s === "jitsi") return "jitsi";
   return "other";
 }

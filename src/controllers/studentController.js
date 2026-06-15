@@ -32,7 +32,11 @@ const studentListIncludes = [
   {
     model: CurriculumClassLevel,
     as: "curriculum_class_level",
+<<<<<<< HEAD
     attributes: ["id", "name", "level_order", "curriculum_class_id"],
+=======
+    attributes: ["id", "name", "curriculum_class_id"],
+>>>>>>> dbf38d6042c6ec91a0dd55101879df2f1e151a96
     required: false,
   },
 ];
@@ -162,7 +166,9 @@ function resolveStudentProfilePicture(req, existingStudent) {
 exports.listStudents = async (req, res) => {
   try {
     const classIdRaw = req.query.curriculum_class_id;
+    const levelIdRaw = req.query.curriculum_class_level_id;
     const hasClassFilter = classIdRaw != null && String(classIdRaw).trim() !== "";
+    const hasLevelFilter = levelIdRaw != null && String(levelIdRaw).trim() !== "";
 
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limitCap = hasClassFilter ? 500 : 100;
@@ -177,6 +183,9 @@ exports.listStudents = async (req, res) => {
     const where = {};
     if (hasClassFilter) {
       where.curriculum_class_id = String(classIdRaw).trim();
+    }
+    if (hasLevelFilter) {
+      where.curriculum_class_level_id = String(levelIdRaw).trim();
     }
 
     const { count, rows } = await Student.findAndCountAll({
@@ -221,17 +230,7 @@ exports.getMyStudentProfile = async (req, res) => {
   try {
     const row = await Student.findOne({
       where: { user_id: req.user.id },
-      include: [
-        { model: User, as: "user", attributes: userExclude },
-        {
-          model: Teacher,
-          as: "class_teacher",
-          required: false,
-          include: [{ model: User, as: "user", attributes: userExclude }],
-        },
-        { model: Curriculum, as: "curriculum", attributes: ["id", "name", "type"], required: false },
-        { model: CurriculumClass, as: "curriculum_class", attributes: ["id", "name", "code"], required: false },
-      ],
+      include: studentListIncludes,
     });
     if (!row) {
       return res.status(404).json({ success: false, message: "Student profile not found" });
@@ -287,6 +286,7 @@ exports.createStudent = async (req, res) => {
     gender,
     curriculum_id,
     curriculum_class_id,
+    curriculum_class_level_id,
     enrollment_date,
     graduation_year,
     blood_group,
@@ -333,7 +333,11 @@ exports.createStudent = async (req, res) => {
     gender,
     curriculum_id: placement.curriculum_id,
     curriculum_class_id: placement.curriculum_class_id,
+<<<<<<< HEAD
     curriculum_class_level_id: levelPlacement.curriculum_class_level_id,
+=======
+    curriculum_class_level_id: body.curriculum_class_level_id || null,
+>>>>>>> dbf38d6042c6ec91a0dd55101879df2f1e151a96
     enrollment_date,
     graduation_year,
     blood_group,
@@ -453,6 +457,9 @@ exports.updateStudent = async (req, res) => {
       return res.status(400).json({ success: false, message: placement.error });
     }
     if (placement) Object.assign(patch, placement);
+    if (body.curriculum_class_level_id !== undefined) {
+      patch.curriculum_class_level_id = body.curriculum_class_level_id || null;
+    }
 
     if (body.curriculum_class_level_id !== undefined) {
       const classId = patch.curriculum_class_id ?? student.curriculum_class_id;

@@ -6,10 +6,7 @@
   "scripts": {
     "start": "nodemon src/server.js",
     "start:cluster": "node src/cluster.js",
-    "test": "echo \"No tests specified\" && exit 0",
-    "create-super-admin": "node scripts/createSuperAdmin.js",
-    "test:pg-tcp": "node scripts/testPgTcp.js",
-    "db:add-student-account-columns": "node scripts/addStudentAccountColumns.js"
+    "test": "echo \"No tests specified\" && exit 0"
   },
   "author": "kennedy ongongo",
   "email": "ongongokennedy89@gmail.com",
@@ -31,6 +28,7 @@
     "express-rate-limit": "^7.5.1",
     "form-data": "^4.0.5",
     "fs": "0.0.1-security",
+    "googleapis": "^172.0.0",
     "handlebars": "^4.7.8",
     "ioredis": "^5.6.1",
     "jsonwebtoken": "^9.0.2",
@@ -43,6 +41,7 @@
     "nodemailer": "^7.0.9",
     "openai": "^6.36.0",
     "path": "^0.12.7",
+    "pdf-lib": "^1.17.1",
     "pdf-parse": "^2.4.5",
     "pdfkit": "^0.17.1",
     "pg": "^8.16.3",

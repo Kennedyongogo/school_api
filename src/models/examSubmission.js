@@ -37,6 +37,22 @@ module.exports = (sequelize) => {
         type: DataTypes.INTEGER,
         allowNull: true,
       },
+      pdf_answers_json: {
+        type: DataTypes.JSONB,
+        allowNull: true,
+      },
+      pdf_completed_file_path: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
+      pdf_auto_score: {
+        type: DataTypes.DECIMAL(8, 2),
+        allowNull: true,
+      },
+      pdf_auto_grading_json: {
+        type: DataTypes.JSONB,
+        allowNull: true,
+      },
     },
     {
       tableName: "exam_submissions",

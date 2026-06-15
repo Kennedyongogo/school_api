@@ -13,6 +13,7 @@ const {
 } = require("../controllers/schoolPortalLiveSessionController");
 const { getLiveClassRoom } = require("../controllers/schoolPortalLiveClassController");
 const { issueLiveKitToken } = require("../controllers/livekitTokenController");
+const { reportLiveKitConnectionError } = require("../controllers/livekitConnectionErrorController");
 const {
   getLiveClassInteractions,
   postLiveClassChat,
@@ -36,6 +37,10 @@ const {
   listMyStudentExamSchedules,
   getMyStudentExamResult,
 } = require("../controllers/schoolPortalTimetableController");
+const {
+  listMyStudentReportCards,
+  getMyStudentReportCard,
+} = require("../controllers/reportCardController");
 const { getExamLiveRoom, getExamScheduleLiveRoom } = require("../controllers/examScheduleLiveController");
 const { issueExamScheduleLiveKitToken } = require("../controllers/examScheduleLivekitTokenController");
 const {
@@ -55,6 +60,7 @@ router.post("/notifications/mark-all-read", authenticateUser, markAllSchoolPorta
 
 router.post("/live-session/join", authenticateUser, authorizeRoles(["student"]), recordLiveSessionJoin);
 router.post("/live-session/leave", authenticateUser, authorizeRoles(["student"]), recordLiveSessionLeave);
+router.post("/livekit/connection-error", authenticateUser, reportLiveKitConnectionError);
 router.get("/live-class/:id", authenticateUser, getLiveClassRoom);
 router.post("/live-class/:id/livekit-token", authenticateUser, issueLiveKitToken);
 router.get("/live-class/:id/interactions", authenticateUser, getLiveClassInteractions);
@@ -76,6 +82,8 @@ router.get("/student/exams", authenticateUser, authorizeRoles(["student"]), list
 router.get("/student/exam-schedules", authenticateUser, authorizeRoles(["student"]), listMyStudentExamSchedules);
 router.get("/student/exam-results/:examScheduleId", authenticateUser, authorizeRoles(["student"]), getMyStudentExamResult);
 router.get("/student/exam-results/exam/:examId", authenticateUser, authorizeRoles(["student"]), getMyStudentExamResult);
+router.get("/student/report-cards", authenticateUser, authorizeRoles(["student"]), listMyStudentReportCards);
+router.get("/student/report-cards/:id", authenticateUser, authorizeRoles(["student"]), getMyStudentReportCard);
 router.get("/exam/:id", authenticateUser, getExamLiveRoom);
 router.post("/exam/:id/livekit-token", authenticateUser, issueExamScheduleLiveKitToken);
 router.get("/exam/:id/lobby", authenticateUser, getExamScheduleLobby);

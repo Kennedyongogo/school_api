@@ -125,14 +125,18 @@ class SignalingService {
         if (!liveClassId) return;
         socket.leave(`live:${liveClassId}`);
       });
-      socket.on("join:exam-schedule", (examScheduleId) => {
-        if (!examScheduleId) return;
-        socket.join(`exam:${examScheduleId}`);
-      });
-      socket.on("leave:exam-schedule", (examScheduleId) => {
-        if (!examScheduleId) return;
-        socket.leave(`exam:${examScheduleId}`);
-      });
+      const joinExamRoom = (examId) => {
+        if (!examId) return;
+        socket.join(`exam:${examId}`);
+      };
+      const leaveExamRoom = (examId) => {
+        if (!examId) return;
+        socket.leave(`exam:${examId}`);
+      };
+      socket.on("join:exam-schedule", joinExamRoom);
+      socket.on("leave:exam-schedule", leaveExamRoom);
+      socket.on("join:exam", joinExamRoom);
+      socket.on("leave:exam", leaveExamRoom);
       socket.on("join:event", (eventId) => {
         if (!eventId) return;
         socket.join(`event:${eventId}`);

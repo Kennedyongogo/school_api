@@ -1,5 +1,6 @@
 const webrtcRoomService = require("../services/webrtcRoomService");
-const { getLiveKitUrl, isConfigured: liveKitConfigured } = require("../services/livekitService");
+const { getLiveKitUrl, isConfigured: liveKitConfigured, probeLiveKitServerApi } = require("../services/livekitService");
+const { MODE_LABELS } = require("../utils/examProctoring");
 const { isInAppVideoPlatform } = require("../utils/meetingPlatform");
 const {
   loadExamForAccess,
@@ -8,11 +9,20 @@ const {
 } = require("../services/examScheduleAccess");
 const { getExamJoinWindow } = require("../utils/examJoinWindow");
 const { resolveExamMeetingUrls } = require("../utils/examMeeting");
-const { normalizeMode, usesLiveKitInvigilation } = require("../utils/examProctoring");
+const { normalizeMode, usesLiveVideoInvigilation } = require("../utils/examProctoring");
+
+function examNeedsLiveKitProvision(exam) {
+  if (!usesLiveVideoInvigilation(exam?.proctoring_mode)) return false;
+  const provider = String(exam.meeting_provider || "").toLowerCase();
+  if (provider === "google_meet" || provider === "googlemeet" || provider === "meet") return true;
+  const join = String(exam.meeting_join_url || "").trim();
+  if (join.includes("meet.google.com")) return true;
+  if (!exam.meeting_id || provider !== "livekit") return true;
+  return false;
+}
 
 async function ensureLiveKitMeetingForExam(exam) {
-  if (!usesLiveKitInvigilation(exam?.proctoring_mode)) return exam;
-  if (exam.meeting_id && String(exam.meeting_provider || "").toLowerCase() === "livekit") return exam;
+  if (!examNeedsLiveKitProvision(exam)) return exam;
   const urls = resolveExamMeetingUrls({}, exam, { preferLiveKit: true });
   if (!urls.meeting_join_url) return exam;
   await exam.update({
@@ -36,7 +46,6 @@ exports.getExamLiveRoom = async (req, res) => {
       start_time: exam.start_time,
       end_time: exam.end_time,
       session_status: exam.session_status,
-      allow_late_join_minutes: exam.allow_late_join_minutes,
       is_staff: staff,
     });
 
@@ -50,6 +59,9 @@ exports.getExamLiveRoom = async (req, res) => {
 
     const platform = String(exam.meeting_provider || "").toLowerCase();
     const role = staff ? "teacher" : "student";
+    const proctoringMode = normalizeMode(exam.proctoring_mode) || "record_only";
+    const liveInvigilation = usesLiveVideoInvigilation(proctoringMode);
+    const serverProbe = liveKitConfigured() ? await probeLiveKitServerApi() : { ok: false, reason: "not configured" };
 
     return res.json({
       success: true,
@@ -61,7 +73,9 @@ exports.getExamLiveRoom = async (req, res) => {
         platform,
         session_status: exam.session_status,
         status: exam.session_status,
-        proctoring_mode: exam.proctoring_mode,
+        proctoring_mode: proctoringMode,
+        proctoring_mode_label: MODE_LABELS[proctoringMode] || proctoringMode,
+        uses_live_invigilation: liveInvigilation,
         can_join: joinWindow.can_join,
         join_blocked_reason: joinWindow.reason,
         join_opens_at: joinWindow.opens_at,
@@ -75,10 +89,20 @@ exports.getExamLiveRoom = async (req, res) => {
             : isInAppVideoPlatform(platform)
               ? "webrtc"
               : "external",
-        media_mode: exam.requires_webcam === false ? "optional" : "video",
+        media_mode: staff ? "video" : exam.requires_webcam === false ? "optional" : "video",
         role,
         join_path: webrtcRoomService.portalExamInvigilationPath(exam.id),
         host_path: webrtcRoomService.adminExamLivePath(exam.id),
+        livekit_diagnostics: {
+          server_configured: liveKitConfigured(),
+          server_api_reachable: serverProbe.ok === true,
+          server_api_detail: serverProbe.ok ? "ok" : serverProbe.reason || "unreachable",
+          meeting_ready: platform === "livekit" && !!exam.meeting_id,
+          video_needs_browser_websocket: platform === "livekit",
+          note: liveInvigilation
+            ? "Lobby/admit uses your API. Camera/audio uses browser → LiveKit Cloud (not the same as lobby)."
+            : "This exam is not Live invigilation — open the Proctor monitor tab or set proctoring_mode to live_monitor.",
+        },
       },
     });
   } catch (error) {

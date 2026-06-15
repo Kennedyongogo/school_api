@@ -17,15 +17,28 @@ const {
   ExamQuestion,
   StudentExamResult,
 } = require("../models");
-const { Op, Sequelize } = require("sequelize");
+const { Op } = require("sequelize");
 
 const userSafe = { attributes: { exclude: ["password_hash"] } };
+
+function studentExamSortTimestamp(row) {
+  for (const key of ["start_time", "created_at", "end_time", "updated_at"]) {
+    const t = row?.[key] ? new Date(row[key]).getTime() : NaN;
+    if (Number.isFinite(t)) return t;
+  }
+  return 0;
+}
 const { getLessonJoinWindow } = require("../utils/lessonJoinWindow");
 const { examAccessPolicyForMode, normalizeMode } = require("../utils/examProctoring");
+const { isPdfFormExam } = require("../utils/examPdfForm");
 const {
   autoSubmitElapsedDraftIfNeeded,
   buildStudentExamAccess,
 } = require("../utils/examSubmissionDuration");
+const {
+  isStudentAssignedToExam,
+  indexSubmissionsByExam,
+} = require("../utils/examAssignedStudents");
 
 exports.listMyStudentTimetableLessons = async (req, res) => {
   try {
@@ -85,8 +98,8 @@ exports.listMyStudentTimetableLessons = async (req, res) => {
         },
       ],
       order: [
-        ["lesson_date", "ASC"],
-        ["starts_at", "ASC"],
+        ["lesson_date", "DESC"],
+        ["starts_at", "DESC"],
       ],
     });
 
@@ -157,7 +170,7 @@ exports.listMyStudentExamSchedules = async (req, res) => {
   try {
     const student = await Student.findOne({
       where: { user_id: req.user?.id },
-      attributes: ["id", "curriculum_id", "curriculum_class_id"],
+      attributes: ["id", "curriculum_id", "curriculum_class_id", "curriculum_class_level_id"],
     });
     if (!student) {
       return res.status(404).json({ success: false, message: "Student profile not found." });
@@ -173,6 +186,9 @@ exports.listMyStudentExamSchedules = async (req, res) => {
       session_status: { [Op.in]: ["scheduled", "live", "completed"] },
     };
     if (student.curriculum_id) where.curriculum_id = student.curriculum_id;
+    if (student.curriculum_class_level_id) {
+      where.curriculum_class_level_id = student.curriculum_class_level_id;
+    }
 
     const rows = await Exam.findAll({
       where,
@@ -188,10 +204,12 @@ exports.listMyStudentExamSchedules = async (req, res) => {
           include: [{ model: User, as: "user", ...userSafe }],
         },
       ],
-      order: [["start_time", "DESC"]],
+      // Sort in JS after fetch — ORDER BY created_at/start_time here is ambiguous when includes join other tables.
     });
 
-    const examIds = rows.map((r) => r.id);
+    const assignedRows = rows.filter((r) => isStudentAssignedToExam(r, student.id));
+
+    const examIds = assignedRows.map((r) => r.id);
     const [attempts, submissions] = await Promise.all([
       examIds.length
         ? ExamAttempt.findAll({
@@ -213,12 +231,9 @@ exports.listMyStudentExamSchedules = async (req, res) => {
     for (const a of attempts) {
       if (!attemptByExam.has(a.exam_id)) attemptByExam.set(a.exam_id, a);
     }
-    const submissionByExam = new Map();
-    for (const s of submissions) {
-      if (!submissionByExam.has(s.exam_id)) submissionByExam.set(s.exam_id, s);
-    }
+    const submissionByExam = indexSubmissionsByExam(submissions);
 
-    for (const r of rows) {
+    for (const r of assignedRows) {
       let sub = submissionByExam.get(r.id);
       if (sub?.status === "draft") {
         sub = await autoSubmitElapsedDraftIfNeeded(sub, r, student.id);
@@ -226,7 +241,8 @@ exports.listMyStudentExamSchedules = async (req, res) => {
       }
     }
 
-    const data = rows.map((r) => {
+    const data = await Promise.all(
+      assignedRows.map(async (r) => {
       const att = attemptByExam.get(r.id);
       const sub = submissionByExam.get(r.id);
       const access = buildStudentExamAccess(r, sub, r);
@@ -250,6 +266,8 @@ exports.listMyStudentExamSchedules = async (req, res) => {
         exam_id: r.id,
         start_time: r.start_time,
         end_time: r.end_time,
+        created_at: r.created_at,
+        updated_at: r.updated_at,
         timezone: r.timezone,
         status: r.session_status,
         session_status: r.session_status,
@@ -275,10 +293,12 @@ exports.listMyStudentExamSchedules = async (req, res) => {
           id: r.id,
           title: r.title,
           status: r.status,
+          exam_type: r.exam_type || "questions",
           duration_minutes: r.duration_minutes,
           requires_webcam: r.requires_webcam,
           prevent_tab_switch: r.prevent_tab_switch,
         },
+        exam_type: r.exam_type || "questions",
         teacher: r.teacher || null,
         attendance,
         can_open: access.can_open,
@@ -289,7 +309,10 @@ exports.listMyStudentExamSchedules = async (req, res) => {
         remaining_seconds: access.remaining_seconds,
         submission_status: access.submission_status,
       };
-    });
+    })
+    );
+
+    data.sort((a, b) => studentExamSortTimestamp(b) - studentExamSortTimestamp(a));
 
     return res.json({ success: true, data });
   } catch (error) {
@@ -312,7 +335,9 @@ exports.getMyStudentExamResult = async (req, res) => {
       return res.status(404).json({ success: false, message: "Student profile not found." });
     }
 
-    const exam = await Exam.findByPk(examId, { attributes: ["id", "title"] });
+    const exam = await Exam.findByPk(examId, {
+      attributes: ["id", "title", "exam_type", "total_marks"],
+    });
     if (!exam) {
       return res.status(404).json({ success: false, message: "Exam not found." });
     }
@@ -331,38 +356,47 @@ exports.getMyStudentExamResult = async (req, res) => {
       return res.status(404).json({ success: false, message: "Exam result not found. The exam may not have been graded yet." });
     }
 
-    // Find the submission to get answers
-    const submission = await ExamSubmission.findOne({
-      where: { exam_id: exam.id, student_id: student.id, status: "submitted" },
-    });
+    const pdfForm = isPdfFormExam(exam);
+    const totalMax = Math.max(0, Number(exam.total_marks || result.total_marks || 0)) || 100;
 
     let questions = [];
-    if (submission) {
-      // Get answers with marks
-      const answers = await ExamAnswer.findAll({
-        where: { submission_id: submission.id },
-        include: [
-          {
-            model: ExamQuestion,
-            as: "question",
-            required: true,
-            attributes: ["id", "question_text", "marks"],
-          },
-        ],
-        order: [["created_at", "ASC"]],
+    if (!pdfForm) {
+      const submission = await ExamSubmission.findOne({
+        where: { exam_id: exam.id, student_id: student.id, status: "submitted" },
       });
+      if (submission) {
+        const answers = await ExamAnswer.findAll({
+          where: { submission_id: submission.id },
+          include: [
+            {
+              model: ExamQuestion,
+              as: "question",
+              required: true,
+              attributes: ["id", "question_text", "marks"],
+            },
+          ],
+          order: [["created_at", "ASC"]],
+        });
 
-      questions = answers.map((a) => ({
-        question: a.question.question_text,
-        score: Number(a.marks_obtained || 0),
-        maxScore: Number(a.question.marks || 0),
-      }));
+        questions = answers
+          .filter((a) => a.question)
+          .map((a) => ({
+            question: a.question.question_text,
+            score: Number(a.marks_obtained || 0),
+            maxScore: Number(a.question.marks || 0),
+          }));
+      }
     }
 
+    const totalScore = Number(result.marks_obtained ?? result.marks ?? 0);
     const data = {
-      totalScore: Number(result.marks_obtained || 0),
-      totalMax: 100, // Assuming max is 100, or could calculate from questions
-      grade: result.grade,
+      examType: exam.exam_type || "questions",
+      showQuestionBreakdown: !pdfForm,
+      totalScore,
+      totalMax,
+      percentage: totalMax > 0 ? Number(((totalScore / totalMax) * 100).toFixed(1)) : null,
+      grade: result.grade_letter || result.grade,
+      gradeRemarks: result.grade_remarks || null,
       questions,
     };
 

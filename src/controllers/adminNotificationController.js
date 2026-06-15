@@ -21,7 +21,10 @@ exports.listAdminNotifications = async (req, res) => {
       return res.status(403).json({ success: false, message: "Forbidden" });
     }
 
-    const userId = req.user.id;
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: "Authentication required." });
+    }
     const unreadCount = await InAppNotification.count({
       where: { user_id: userId, is_read: false },
     });
@@ -39,7 +42,8 @@ exports.listAdminNotifications = async (req, res) => {
       },
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    console.error("[admin] listAdminNotifications:", error);
+    return res.status(500).json({ success: false, message: error.message || "Could not load notifications." });
   }
 };
 

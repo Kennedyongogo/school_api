@@ -1,4 +1,5 @@
 const EARLY_JOIN_MINUTES = 15;
+const DEFAULT_LATE_JOIN_MINUTES = 10;
 
 /**
  * @returns {{ can_join: boolean, reason: string|null, opens_at: string|null, closes_at: string|null }}
@@ -8,7 +9,6 @@ function getExamJoinWindow({
   end_time,
   session_status,
   status,
-  allow_late_join_minutes = 10,
   is_staff = false,
   early_minutes = EARLY_JOIN_MINUTES,
 }) {
@@ -34,7 +34,7 @@ function getExamJoinWindow({
   if (!slotEnd || Number.isNaN(slotEnd.getTime())) {
     slotEnd = new Date(slotStart.getTime() + 2 * 60 * 60 * 1000);
   }
-  const lateMin = Number.isFinite(Number(allow_late_join_minutes)) ? Number(allow_late_join_minutes) : 10;
+  const lateMin = DEFAULT_LATE_JOIN_MINUTES;
   const closesAt = new Date(slotEnd.getTime() + lateMin * 60 * 1000);
   const opensAt = new Date(slotStart.getTime() - early_minutes * 60 * 1000);
   const now = new Date();
@@ -67,4 +67,4 @@ function getExamJoinWindow({
 /** @deprecated alias */
 const getExamScheduleJoinWindow = (opts) => getExamJoinWindow(opts);
 
-module.exports = { getExamJoinWindow, getExamScheduleJoinWindow, EARLY_JOIN_MINUTES };
+module.exports = { getExamJoinWindow, getExamScheduleJoinWindow, EARLY_JOIN_MINUTES, DEFAULT_LATE_JOIN_MINUTES };

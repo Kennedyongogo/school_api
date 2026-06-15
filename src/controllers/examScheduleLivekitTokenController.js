@@ -9,7 +9,7 @@ const {
 } = require("../services/examScheduleAccess");
 const { getExamScheduleJoinWindow } = require("../utils/examJoinWindow");
 const { resolveExamMeetingUrls } = require("../utils/examMeeting");
-const { usesLiveKitInvigilation } = require("../utils/examProctoring");
+const { usesLiveVideoInvigilation } = require("../utils/examProctoring");
 
 exports.issueExamScheduleLiveKitToken = async (req, res) => {
   try {
@@ -24,14 +24,23 @@ exports.issueExamScheduleLiveKitToken = async (req, res) => {
     let schedule = await loadExamScheduleForAccess(id);
     await assertCanAccessExamSchedule(req, schedule);
 
-    if (!usesLiveKitInvigilation(schedule.proctoring_mode)) {
+    if (!usesLiveVideoInvigilation(schedule.proctoring_mode)) {
       return res.status(400).json({
         success: false,
         message: "This exam does not use live video invigilation.",
       });
     }
 
-    if (!schedule.meeting_id || String(schedule.meeting_provider || "").toLowerCase() !== "livekit") {
+    const provider = String(schedule.meeting_provider || "").toLowerCase();
+    const join = String(schedule.meeting_join_url || "").trim();
+    const needsLiveKit =
+      provider !== "livekit" ||
+      !schedule.meeting_id ||
+      join.includes("meet.google.com") ||
+      provider === "google_meet" ||
+      provider === "googlemeet";
+
+    if (needsLiveKit) {
       const urls = resolveExamMeetingUrls({}, schedule, { preferLiveKit: true });
       if (urls.meeting_join_url) {
         await schedule.update({
@@ -65,7 +74,6 @@ exports.issueExamScheduleLiveKitToken = async (req, res) => {
       start_time: schedule.start_time,
       end_time: schedule.end_time,
       session_status: schedule.session_status,
-      allow_late_join_minutes: schedule.allow_late_join_minutes,
       is_staff: staff,
     });
 
@@ -78,16 +86,16 @@ exports.issueExamScheduleLiveKitToken = async (req, res) => {
 
     let role = isTeacherRole(req) ? "teacher" : "student";
 
-    if (req.user.role === "student") {
+    if (!staff) {
       const entry = await ExamScheduleLobbyEntry.findOne({
-        where: { exam_id: id, user_id: req.user.id },
+        where: { exam_id: schedule.id, user_id: req.user.id },
         order: [["requested_at", "DESC"]],
         attributes: ["status"],
       });
       if (!entry || entry.status !== "admitted") {
         return res.status(403).json({
           success: false,
-          message: "You must be admitted by the invigilator before joining video.",
+          message: "You must be admitted from the waiting room before joining video.",
         });
       }
     }
@@ -115,6 +123,8 @@ exports.issueExamScheduleLiveKitToken = async (req, res) => {
         room_name: roomName,
         exam_id: schedule.id,
         exam_schedule_id: schedule.id,
+        identity: String(req.user.id),
+        livekit_role: role,
         video_mode: isInAppVideoPlatform(platform) && platform === "livekit" ? "livekit" : "external",
       },
     });

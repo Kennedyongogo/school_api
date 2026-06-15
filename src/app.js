@@ -27,14 +27,18 @@ const studentExamResultRoutes = require("./routes/studentExamResultRoutes");
 const subjectGradingScaleRoutes = require("./routes/subjectGradingScaleRoutes");
 const overallGradingScaleRoutes = require("./routes/overallGradingScaleRoutes");
 const examResultsRoutes = require("./routes/examResultsRoutes");
+const reportCardRoutes = require("./routes/reportCardRoutes");
 const realtimeRoutes = require("./routes/realtimeRoutes");
 const examSessionLogRoutes = require("./routes/examSessionLogRoutes");
 const schoolReportsRoutes = require("./routes/schoolReportsRoutes");
 const feeStructureRoutes = require("./routes/feeStructureRoutes");
 const feeInvoiceRoutes = require("./routes/feeInvoiceRoutes");
 const feePaymentRoutes = require("./routes/feePaymentRoutes");
+<<<<<<< HEAD
 const mpesaRoutes = require("./routes/mpesaRoutes");
 const { stkCallback } = require("./controllers/mpesaController");
+=======
+>>>>>>> dbf38d6042c6ec91a0dd55101879df2f1e151a96
 const curriculumRoutes = require("./routes/curriculumRoutes");
 const newsRoutes = require("./routes/newsRoutes");
 const schoolServiceRoutes = require("./routes/schoolServiceRoutes");
@@ -46,6 +50,7 @@ const admissionApplicationRoutes = require("./routes/admissionApplicationRoutes"
 const schoolProfileRoutes = require("./routes/schoolProfileRoutes");
 const elimuPlusRoutes = require("./routes/elimuPlusRoutes");
 const schoolPortalRoutes = require("./routes/schoolPortalRoutes");
+const googleMeetRoutes = require("./routes/googleMeetRoutes");
 const publicRoutes = require("./routes/publicRoutes");
 
 const app = express();
@@ -70,12 +75,16 @@ const grantsUploadPath = path.join(__dirname, "..", "uploads", "grants");
 const partnersUploadPath = path.join(__dirname, "..", "uploads", "partners");
 const marketplaceListingsUploadPath = path.join(__dirname, "..", "uploads", "marketplace-listings");
 const proctoringRecordingsUploadPath = path.join(__dirname, "..", "uploads", "proctoring-recordings");
+const reportCardsUploadPath = path.join(__dirname, "..", "uploads", "report-cards");
 const postersUploadPath = path.join(__dirname, "..", "uploads", "posters");
 const schoolLogosUploadPath = path.join(__dirname, "..", "uploads", "school-logos");
 const teacherProfilesUploadPath = path.join(__dirname, "..", "uploads", "teacher-profiles");
 const studentProfilesUploadPath = path.join(__dirname, "..", "uploads", "student-profiles");
 const admissionDocumentsUploadPath = path.join(__dirname, "..", "uploads", "admission-documents");
 const examAnswersUploadPath = path.join(__dirname, "..", "uploads", "exam-answers");
+const examPdfTemplatesUploadPath = path.join(__dirname, "..", "uploads", "exam-pdf-templates");
+const examPdfCompletedUploadPath = path.join(__dirname, "..", "uploads", "exam-pdf-completed");
+const examPdfWorkingPapersUploadPath = path.join(__dirname, "..", "uploads", "exam-pdf-working-papers");
 
 app.use("/uploads/profiles", express.static(profilesUploadPath));
 app.use("/uploads/documents", express.static(documentsUploadPath));
@@ -92,12 +101,16 @@ app.use("/uploads/grants", express.static(grantsUploadPath));
 app.use("/uploads/partners", express.static(partnersUploadPath));
 app.use("/uploads/marketplace-listings", express.static(marketplaceListingsUploadPath));
 app.use("/uploads/proctoring-recordings", express.static(proctoringRecordingsUploadPath));
+app.use("/uploads/report-cards", express.static(reportCardsUploadPath));
 app.use("/uploads/posters", express.static(postersUploadPath));
 app.use("/uploads/school-logos", express.static(schoolLogosUploadPath));
 app.use("/uploads/teacher-profiles", cors(), express.static(teacherProfilesUploadPath));
 app.use("/uploads/student-profiles", cors(), express.static(studentProfilesUploadPath));
 app.use("/uploads/admission-documents", cors(), express.static(admissionDocumentsUploadPath));
 app.use("/uploads/exam-answers", cors(), express.static(examAnswersUploadPath));
+app.use("/uploads/exam-pdf-templates", cors(), express.static(examPdfTemplatesUploadPath));
+app.use("/uploads/exam-pdf-completed", cors(), express.static(examPdfCompletedUploadPath));
+app.use("/uploads/exam-pdf-working-papers", cors(), express.static(examPdfWorkingPapersUploadPath));
 
 app.use("/api/users", userRoutes);
 app.use("/api/students", studentRoutes);
@@ -115,6 +128,7 @@ app.use("/api/proctoring-recordings", proctoringRecordingRoutes);
 app.use("/api/student-exam-results", studentExamResultRoutes);
 app.use("/api/grading/subject-scales", subjectGradingScaleRoutes);
 app.use("/api/grading/overall-scales", overallGradingScaleRoutes);
+app.use("/api/report-cards", reportCardRoutes);
 app.use("/api", examResultsRoutes);
 app.use("/api/realtime", realtimeRoutes);
 app.use("/api/exam-session-logs", examSessionLogRoutes);
@@ -122,9 +136,12 @@ app.use("/api/reports", schoolReportsRoutes);
 app.use("/api/fee-structures", feeStructureRoutes);
 app.use("/api/fee-invoices", feeInvoiceRoutes);
 app.use("/api/fee-payments", feePaymentRoutes);
+<<<<<<< HEAD
 app.use("/api/mpesa", mpesaRoutes);
 /** Alias for Daraja docs / ngrok setups that use /mpesa/callback */
 app.post("/mpesa/callback", stkCallback);
+=======
+>>>>>>> dbf38d6042c6ec91a0dd55101879df2f1e151a96
 app.use("/api/curricula", curriculumRoutes);
 app.use("/api/news", newsRoutes);
 app.use("/api/school-services", schoolServiceRoutes);
@@ -136,6 +153,7 @@ app.use("/api/admission-applications", admissionApplicationRoutes);
 app.use("/api/school-profile", schoolProfileRoutes);
 app.use("/api/elimu-plus", elimuPlusRoutes);
 app.use("/api/school-portal", schoolPortalRoutes);
+app.use("/api/google-meet", googleMeetRoutes);
 app.use("/api/public", publicRoutes);
 
 app.post("/api/auth/forgot", async (req, res) => {

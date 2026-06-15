@@ -97,8 +97,9 @@ exports.getLiveClassRoom = async (req, res) => {
         ice_servers: isInAppVideoPlatform(live.platform) && live.platform !== "livekit" ? webrtcRoomService.getIceServers() : [],
         livekit_url: live.platform === "livekit" && liveKitConfigured() ? getLiveKitUrl() : null,
         video_mode: live.platform === "livekit" ? "livekit" : isInAppVideoPlatform(live.platform) ? "webrtc" : "external",
-        media_mode:
-          live.timetable_lesson?.delivery_mode === "online"
+        media_mode: isStaff
+          ? "video"
+          : live.timetable_lesson?.delivery_mode === "online"
             ? String(live.timetable_lesson?.media_mode || "optional").toLowerCase()
             : "optional",
         role,

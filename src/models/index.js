@@ -16,6 +16,8 @@ const ProctoringRecording = require("./proctoringRecording")(sequelize);
 const SubjectGradingScale = require("./subjectGradingScale")(sequelize);
 const OverallGradingScale = require("./overallGradingScale")(sequelize);
 const StudentExamResult = require("./studentExamResult")(sequelize);
+const ReportCard = require("./reportCard")(sequelize);
+const ReportCardLine = require("./reportCardLine")(sequelize);
 const ExamSessionLog = require("./examSessionLog")(sequelize);
 const TeacherDepartment = require("./teacherDepartment")(sequelize);
 const TeacherCurriculumJoin = require("./teacherCurriculumJoin")(sequelize);
@@ -31,6 +33,8 @@ const StudentLevelFeeCredit = require("./studentLevelFeeCredit")(sequelize);
 const MpesaStkRequest = require("./mpesaStkRequest")(sequelize);
 const AcademicTerm = require("./academicTerm")(sequelize);
 const Installment = require("./installment")(sequelize);
+const FeeInvoice = require("./feeInvoice")(sequelize);
+const FeePayment = require("./feePayment")(sequelize);
 const Curriculum = require("./curriculum")(sequelize);
 const CurriculumClass = require("./curriculumClass")(sequelize);
 const CurriculumClassLevel = require("./curriculumClassLevel")(sequelize);
@@ -69,6 +73,7 @@ const ExamScheduleLobbyEntry = require("./examScheduleLobbyEntry")(sequelize);
 const InAppNotification = require("./inAppNotification")(sequelize);
 const SchoolProfile = require("./schoolProfile")(sequelize);
 const ExamTemplate = require("./examTemplate")(sequelize);
+const GoogleMeetCredential = require("./googleMeetCredential")(sequelize);
 
 const models = {
   User,
@@ -88,6 +93,8 @@ const models = {
   SubjectGradingScale,
   OverallGradingScale,
   StudentExamResult,
+  ReportCard,
+  ReportCardLine,
   ExamSessionLog,
   TeacherDepartment,
   TeacherCurriculumJoin,
@@ -100,6 +107,8 @@ const models = {
   MpesaStkRequest,
   AcademicTerm,
   Installment,
+  FeeInvoice,
+  FeePayment,
   Curriculum,
   CurriculumClass,
   CurriculumClassLevel,
@@ -133,23 +142,38 @@ const models = {
   InAppNotification,
   SchoolProfile,
   ExamTemplate,
+  GoogleMeetCredential,
 };
 
 const { ensureUnifiedExamSchema } = require("../utils/ensureUnifiedExamSchema");
+<<<<<<< HEAD
 const { ensureFeeBillingSchema } = require("../utils/ensureFeeBillingSchema");
 
+=======
+const { ensureReportCardSchema } = require("../utils/ensureReportCardSchema");
+const { ensureInAppNotificationSchema } = require("../utils/ensureInAppNotificationSchema");
+const { ensureFeeBillingSchema } = require("../utils/ensureFeeBillingSchema");
+>>>>>>> dbf38d6042c6ec91a0dd55101879df2f1e151a96
 const initializeModels = async () => {
   try {
     console.log("🔄 Creating/updating school system tables...");
     await ensureUnifiedExamSchema();
+<<<<<<< HEAD
+=======
+    await ensureReportCardSchema();
+    await ensureInAppNotificationSchema();
+>>>>>>> dbf38d6042c6ec91a0dd55101879df2f1e151a96
     await ensureFeeBillingSchema();
     await User.sync({ force: false, alter: false });
+    await GoogleMeetCredential.sync({ force: false, alter: true });
     await Teacher.sync({ force: false, alter: false });
-    await Student.sync({ force: false, alter: false });
+    await Student.sync({ force: false, alter: true });
     await Parent.sync({ force: false, alter: false });
     await SchoolAdmin.sync({ force: false, alter: false });
     await Department.sync({ force: false, alter: false });
     await StudentExamResult.sync({ force: false, alter: false });
+    await ReportCard.sync({ force: false, alter: false });
+    await ReportCardLine.sync({ force: false, alter: false });
     await FeeStructure.sync({ force: false, alter: false });
     await FeeInvoice.sync({ force: false, alter: false });
     await FeePayment.sync({ force: false, alter: false });
@@ -163,6 +187,8 @@ const initializeModels = async () => {
     await ExamSubmission.sync({ force: false, alter: false });
     await ExamAnswer.sync({ force: false, alter: false });
     await Installment.sync({ force: false, alter: false });
+    await FeeInvoice.sync({ force: false, alter: false });
+    await FeePayment.sync({ force: false, alter: false });
     await Curriculum.sync({ force: false, alter: false });
     await CurriculumClass.sync({ force: false, alter: false });
     await CurriculumClassLevel.sync({ force: false, alter: false });
@@ -237,6 +263,13 @@ const setupAssociations = () => {
     });
     SchoolAdmin.belongsTo(User, { foreignKey: "user_id", as: "user" });
 
+    User.hasOne(GoogleMeetCredential, {
+      foreignKey: "user_id",
+      onDelete: "CASCADE",
+      as: "google_meet_credential",
+    });
+    GoogleMeetCredential.belongsTo(User, { foreignKey: "user_id", as: "user" });
+
     Teacher.hasMany(Student, {
       foreignKey: "class_teacher_id",
       as: "class_students",
@@ -272,6 +305,14 @@ const setupAssociations = () => {
       as: "curriculum_class_level",
     });
 
+    CurriculumClassLevel.hasMany(Student, {
+      foreignKey: "curriculum_class_level_id",
+      as: "students",
+    });
+    Student.belongsTo(CurriculumClassLevel, {
+      foreignKey: "curriculum_class_level_id",
+      as: "curriculum_class_level",
+    });
 
     Department.belongsTo(Teacher, {
       foreignKey: "head_of_department",
@@ -452,6 +493,23 @@ const setupAssociations = () => {
       as: "exam",
     });
 
+    Student.hasMany(ReportCard, { foreignKey: "student_id", as: "report_cards" });
+    ReportCard.belongsTo(Student, { foreignKey: "student_id", as: "student" });
+    ReportCard.belongsTo(Curriculum, { foreignKey: "curriculum_id", as: "curriculum" });
+    ReportCard.belongsTo(CurriculumClass, { foreignKey: "curriculum_class_id", as: "curriculum_class" });
+    ReportCard.belongsTo(CurriculumClassLevel, {
+      foreignKey: "curriculum_class_level_id",
+      as: "curriculum_class_level",
+    });
+    ReportCard.belongsTo(User, { foreignKey: "created_by", as: "creator" });
+    ReportCard.hasMany(ReportCardLine, { foreignKey: "report_card_id", as: "lines" });
+    ReportCardLine.belongsTo(ReportCard, { foreignKey: "report_card_id", as: "report_card" });
+    ReportCardLine.belongsTo(Exam, { foreignKey: "exam_id", as: "exam" });
+    ReportCardLine.belongsTo(StudentExamResult, {
+      foreignKey: "student_exam_result_id",
+      as: "student_exam_result",
+    });
+
 
 
 
@@ -576,6 +634,37 @@ const setupAssociations = () => {
       as: "installments",
     });
     Installment.belongsTo(Student, { foreignKey: "student_id", as: "student" });
+
+    Student.hasMany(FeeInvoice, { foreignKey: "student_id", as: "fee_invoices" });
+    FeeInvoice.belongsTo(Student, { foreignKey: "student_id", as: "student" });
+    Parent.hasMany(FeeInvoice, { foreignKey: "parent_id", as: "fee_invoices" });
+    FeeInvoice.belongsTo(Parent, { foreignKey: "parent_id", as: "parent" });
+    FeeStructure.hasMany(FeeInvoice, { foreignKey: "fee_structure_id", as: "invoices" });
+    FeeInvoice.belongsTo(FeeStructure, { foreignKey: "fee_structure_id", as: "fee_structure" });
+    CurriculumClassLevel.hasMany(FeeInvoice, {
+      foreignKey: "curriculum_class_level_id",
+      as: "fee_invoices",
+    });
+    FeeInvoice.belongsTo(CurriculumClassLevel, {
+      foreignKey: "curriculum_class_level_id",
+      as: "curriculum_class_level",
+    });
+    FeeInvoice.hasMany(FeePayment, { foreignKey: "fee_invoice_id", as: "payments" });
+    FeePayment.belongsTo(FeeInvoice, { foreignKey: "fee_invoice_id", as: "fee_invoice" });
+    Student.hasMany(FeePayment, { foreignKey: "student_id", as: "fee_payments" });
+    FeePayment.belongsTo(Student, { foreignKey: "student_id", as: "student" });
+    Parent.hasMany(FeePayment, { foreignKey: "parent_id", as: "fee_payments" });
+    FeePayment.belongsTo(Parent, { foreignKey: "parent_id", as: "parent" });
+    User.hasMany(FeePayment, { foreignKey: "recorded_by", as: "recorded_fee_payments" });
+    FeePayment.belongsTo(User, { foreignKey: "recorded_by", as: "recorded_by_user" });
+    CurriculumClassLevel.hasMany(FeePayment, {
+      foreignKey: "curriculum_class_level_id",
+      as: "fee_payments",
+    });
+    FeePayment.belongsTo(CurriculumClassLevel, {
+      foreignKey: "curriculum_class_level_id",
+      as: "curriculum_class_level",
+    });
 
 
 

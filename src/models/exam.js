@@ -68,11 +68,6 @@ module.exports = (sequelize) => {
         type: DataTypes.BOOLEAN,
         defaultValue: true,
       },
-      allow_late_join_minutes: {
-        type: DataTypes.INTEGER,
-        allowNull: false,
-        defaultValue: 10,
-      },
       proctoring_mode: {
         type: DataTypes.STRING(32),
         allowNull: false,
@@ -104,6 +99,19 @@ module.exports = (sequelize) => {
       exam_type: {
         type: DataTypes.STRING(50),
         allowNull: true,
+        defaultValue: "questions",
+      },
+      pdf_template_path: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
+      pdf_field_schema_json: {
+        type: DataTypes.JSONB,
+        allowNull: true,
+      },
+      pdf_answer_key_json: {
+        type: DataTypes.JSONB,
+        allowNull: true,
       },
       total_marks: {
         type: DataTypes.INTEGER,
@@ -127,14 +135,6 @@ module.exports = (sequelize) => {
         type: DataTypes.BOOLEAN,
         defaultValue: true,
       },
-      allow_retake: {
-        type: DataTypes.BOOLEAN,
-        defaultValue: false,
-      },
-      max_attempts: {
-        type: DataTypes.INTEGER,
-        defaultValue: 1,
-      },
       instructions: {
         type: DataTypes.TEXT,
         allowNull: true,
@@ -147,6 +147,11 @@ module.exports = (sequelize) => {
       status: {
         type: DataTypes.ENUM("draft", "published", "archived"),
         defaultValue: "draft",
+      },
+      assigned_student_ids: {
+        type: DataTypes.JSONB,
+        allowNull: false,
+        defaultValue: [],
       },
       created_by: {
         type: DataTypes.UUID,

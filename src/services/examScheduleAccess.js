@@ -1,5 +1,6 @@
 const { Exam, Student, Teacher } = require("../models");
 const { STAFF_ROLES, ADMIN_PORTAL_API_ROLES } = require("../constants/userRoles");
+const { isStudentAssignedToExam } = require("../utils/examAssignedStudents");
 
 const TEACH_OR_STAFF = [...STAFF_ROLES, "teacher"];
 
@@ -23,13 +24,14 @@ async function loadExamForAccess(examId) {
       "session_status",
       "status",
       "is_active",
-      "allow_late_join_minutes",
       "meeting_id",
       "meeting_provider",
       "meeting_join_url",
       "meeting_host_url",
       "proctoring_mode",
       "requires_webcam",
+      "assigned_student_ids",
+      "curriculum_class_level_id",
     ],
   });
 }
@@ -66,7 +68,7 @@ async function assertCanAccessExam(req, exam) {
   }
   const student = await Student.findOne({
     where: { user_id: req.user.id },
-    attributes: ["id", "curriculum_class_id"],
+    attributes: ["id", "curriculum_class_id", "curriculum_class_level_id"],
   });
   if (!student) {
     const err = new Error("Student profile not found.");
@@ -75,6 +77,20 @@ async function assertCanAccessExam(req, exam) {
   }
   if (!exam.curriculum_class_id || String(student.curriculum_class_id) !== String(exam.curriculum_class_id)) {
     const err = new Error("You are not enrolled in the class for this exam.");
+    err.statusCode = 403;
+    throw err;
+  }
+  if (
+    exam.curriculum_class_level_id &&
+    student.curriculum_class_level_id &&
+    String(student.curriculum_class_level_id) !== String(exam.curriculum_class_level_id)
+  ) {
+    const err = new Error("You are not enrolled in the level for this exam.");
+    err.statusCode = 403;
+    throw err;
+  }
+  if (!isStudentAssignedToExam(exam, student.id)) {
+    const err = new Error("You are not assigned to this exam.");
     err.statusCode = 403;
     throw err;
   }
