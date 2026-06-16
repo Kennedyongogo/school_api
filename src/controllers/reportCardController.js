@@ -37,6 +37,80 @@ function unlinkReportCardPdf(pdfUrl) {
   return fs.promises.unlink(filePath).catch(() => {});
 }
 
+const REPORT_CARDS_UPLOAD_DIR = path.join(__dirname, "..", "..", "uploads", "report-cards");
+
+function reportCardPdfPathFromUrl(pdfUrl) {
+  if (!pdfUrl || typeof pdfUrl !== "string") return null;
+  const marker = "/uploads/report-cards/";
+  const idx = pdfUrl.indexOf(marker);
+  if (idx === -1) return null;
+  const filename = pdfUrl.slice(idx + marker.length);
+  if (!filename || filename.includes("..") || filename.includes("/") || filename.includes("\\")) return null;
+  return path.join(REPORT_CARDS_UPLOAD_DIR, filename);
+}
+
+function buildPdfDataFromReportCard(row) {
+  const plain = row?.get ? row.get({ plain: true }) : row;
+  const student = plain.student || row.student;
+  const studentPlain = student?.get ? student.get({ plain: true }) : student;
+  const studentName =
+    studentPlain?.user?.full_name?.trim() ||
+    studentPlain?.user?.username?.trim() ||
+    studentPlain?.admission_number ||
+    "Student";
+  const lines = (plain.lines || row.lines || []).map((l) => {
+    const line = l?.get ? l.get({ plain: true }) : l;
+    return {
+      exam_title: line.exam_title,
+      marks_obtained: line.marks_obtained,
+      total_marks: line.total_marks,
+      grade: line.grade,
+    };
+  });
+  return {
+    studentName,
+    admissionNumber: studentPlain?.admission_number,
+    className: plain.curriculum_class?.name || studentPlain?.curriculum_class?.name || "—",
+    levelName: plain.curriculum_class_level?.name || null,
+    title: plain.title,
+    lines,
+    totalObtained: Number(plain.total_marks_obtained),
+    totalPossible: plain.total_marks_possible != null ? Number(plain.total_marks_possible) : null,
+    overallGrade: plain.overall_grade,
+    overallRemarks: plain.overall_remarks,
+  };
+}
+
+async function ensureReportCardPdfFile(row) {
+  const existingPath = reportCardPdfPathFromUrl(row.pdf_url);
+  if (existingPath && fs.existsSync(existingPath)) {
+    return { filePath: existingPath, publicUrl: row.pdf_url };
+  }
+  const { filePath, publicUrl } = await generateReportCardPdf(buildPdfDataFromReportCard(row));
+  await row.update({ pdf_url: publicUrl });
+  return { filePath, publicUrl };
+}
+
+async function loadReportCardForPdf(id, options = {}) {
+  const where = { id };
+  if (options.studentId) where.student_id = options.studentId;
+  return ReportCard.findOne({
+    where,
+    include: [
+      { model: ReportCardLine, as: "lines", separate: true, order: [["sort_order", "ASC"]] },
+      { model: Student, as: "student", include: [{ model: User, as: "user", attributes: userAttrs }] },
+      { model: CurriculumClass, as: "curriculum_class", attributes: ["id", "name"], required: false },
+      { model: CurriculumClassLevel, as: "curriculum_class_level", attributes: ["id", "name"], required: false },
+    ],
+  });
+}
+
+function streamReportCardPdfFile(res, row, filePath) {
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `inline; filename="report-card-${row.id}.pdf"`);
+  return res.sendFile(path.resolve(filePath));
+}
+
 function serializeReportCard(row) {
   const plain = row?.get ? row.get({ plain: true }) : { ...row };
   const rawTs = plain.created_at ?? plain.createdAt ?? plain.updated_at ?? plain.updatedAt;
@@ -539,6 +613,32 @@ exports.getReportCard = async (req, res) => {
     });
     if (!row) return res.status(404).json({ success: false, message: "Report card not found." });
     return res.json({ success: true, data: serializeReportCard(row) });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.streamReportCardPdf = async (req, res) => {
+  try {
+    const row = await loadReportCardForPdf(req.params.id);
+    if (!row) return res.status(404).json({ success: false, message: "Report card not found." });
+    const { filePath } = await ensureReportCardPdfFile(row);
+    return streamReportCardPdfFile(res, row, filePath);
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.streamMyStudentReportCardPdf = async (req, res) => {
+  try {
+    const student = await resolveStudentForPortalUser(req.user?.id);
+    if (!student) {
+      return res.status(404).json({ success: false, message: "Student profile not found." });
+    }
+    const row = await loadReportCardForPdf(req.params.id, { studentId: student.id });
+    if (!row) return res.status(404).json({ success: false, message: "Report card not found." });
+    const { filePath } = await ensureReportCardPdfFile(row);
+    return streamReportCardPdfFile(res, row, filePath);
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }

@@ -7,6 +7,7 @@ const {
   createReportCard,
   listReportCards,
   getReportCard,
+  streamReportCardPdf,
   deleteReportCard,
 } = require("../controllers/reportCardController");
 const { authenticateUser, authorizeRoles } = require("../middleware/auth");
@@ -19,6 +20,7 @@ router.get("/graded-exams", authenticateUser, authorizeRoles(TEACH_OR_STAFF), li
 router.post("/preview", authenticateUser, authorizeRoles(TEACH_OR_STAFF), previewReportCard);
 router.post("/", authenticateUser, authorizeRoles(TEACH_OR_STAFF), createReportCard);
 router.get("/", authenticateUser, authorizeRoles(TEACH_OR_STAFF), listReportCards);
+router.get("/:id/pdf", authenticateUser, authorizeRoles(TEACH_OR_STAFF), streamReportCardPdf);
 router.get("/:id", authenticateUser, authorizeRoles(TEACH_OR_STAFF), getReportCard);
 router.delete("/:id", authenticateUser, authorizeRoles(TEACH_OR_STAFF), deleteReportCard);
 

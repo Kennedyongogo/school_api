@@ -72,6 +72,7 @@ const InAppNotification = require("./inAppNotification")(sequelize);
 const SchoolProfile = require("./schoolProfile")(sequelize);
 const ExamTemplate = require("./examTemplate")(sequelize);
 const GoogleMeetCredential = require("./googleMeetCredential")(sequelize);
+const AuditTrail = require("./auditTrail")(sequelize);
 
 const models = {
   User,
@@ -139,12 +140,14 @@ const models = {
   SchoolProfile,
   ExamTemplate,
   GoogleMeetCredential,
+  AuditTrail,
 };
 
 const { ensureUnifiedExamSchema } = require("../utils/ensureUnifiedExamSchema");
 const { ensureReportCardSchema } = require("../utils/ensureReportCardSchema");
 const { ensureInAppNotificationSchema } = require("../utils/ensureInAppNotificationSchema");
 const { ensureFeeBillingSchema } = require("../utils/ensureFeeBillingSchema");
+const { ensureAuditTrailSchema } = require("../utils/ensureAuditTrailSchema");
 const initializeModels = async () => {
   try {
     console.log("🔄 Creating/updating school system tables...");
@@ -152,6 +155,7 @@ const initializeModels = async () => {
     await ensureReportCardSchema();
     await ensureInAppNotificationSchema();
     await ensureFeeBillingSchema();
+    await ensureAuditTrailSchema();
     await User.sync({ force: false, alter: false });
     await GoogleMeetCredential.sync({ force: false, alter: true });
     await Teacher.sync({ force: false, alter: false });
@@ -212,6 +216,7 @@ const initializeModels = async () => {
     await LiveClassReaction.sync({ force: false, alter: false });
     await LiveClassLobbyEntry.sync({ force: false, alter: false });
     await ExamScheduleLobbyEntry.sync({ force: false, alter: false });
+    await AuditTrail.sync({ force: false, alter: false });
     console.log("✅ All models synced successfully");
   } catch (error) {
     console.error("❌ Error syncing models:", error);
@@ -1071,6 +1076,8 @@ const setupAssociations = () => {
     User.hasMany(LiveClassLobbyEntry, { foreignKey: "user_id", as: "live_class_lobby_entries" });
     Student.hasMany(LiveClassLobbyEntry, { foreignKey: "student_id", as: "live_class_lobby_entries" });
 
+    User.hasMany(AuditTrail, { foreignKey: "user_id", as: "audit_trails", onDelete: "SET NULL" });
+    AuditTrail.belongsTo(User, { foreignKey: "user_id", as: "user" });
 
 
     console.log("✅ All associations set up successfully");

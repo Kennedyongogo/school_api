@@ -9,6 +9,7 @@ const { initializeModels, setupAssociations } = require("./models");
 const { User } = require("./models");
 const { errorHandler } = require("./middleware/errorHandler");
 const { injectSchoolContext } = require("./middleware/schoolContext");
+const auditAdminActivity = require("./middleware/auditAdminActivity");
 
 const userRoutes = require("./routes/userRoutes");
 const studentRoutes = require("./routes/studentRoutes");
@@ -49,6 +50,7 @@ const elimuPlusRoutes = require("./routes/elimuPlusRoutes");
 const schoolPortalRoutes = require("./routes/schoolPortalRoutes");
 const googleMeetRoutes = require("./routes/googleMeetRoutes");
 const publicRoutes = require("./routes/publicRoutes");
+const auditTrailRoutes = require("./routes/auditTrailRoutes");
 
 const app = express();
 
@@ -56,6 +58,7 @@ app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 app.use(cors());
 app.use(injectSchoolContext);
+app.use(auditAdminActivity);
 
 const profilesUploadPath = path.join(__dirname, "..", "uploads", "profiles");
 const documentsUploadPath = path.join(__dirname, "..", "uploads", "documents");
@@ -73,6 +76,9 @@ const partnersUploadPath = path.join(__dirname, "..", "uploads", "partners");
 const marketplaceListingsUploadPath = path.join(__dirname, "..", "uploads", "marketplace-listings");
 const proctoringRecordingsUploadPath = path.join(__dirname, "..", "uploads", "proctoring-recordings");
 const reportCardsUploadPath = path.join(__dirname, "..", "uploads", "report-cards");
+if (!fs.existsSync(reportCardsUploadPath)) {
+  fs.mkdirSync(reportCardsUploadPath, { recursive: true });
+}
 const postersUploadPath = path.join(__dirname, "..", "uploads", "posters");
 const schoolLogosUploadPath = path.join(__dirname, "..", "uploads", "school-logos");
 const teacherProfilesUploadPath = path.join(__dirname, "..", "uploads", "teacher-profiles");
@@ -126,6 +132,7 @@ app.use("/api/student-exam-results", studentExamResultRoutes);
 app.use("/api/grading/subject-scales", subjectGradingScaleRoutes);
 app.use("/api/grading/overall-scales", overallGradingScaleRoutes);
 app.use("/api/report-cards", reportCardRoutes);
+app.use("/api/audit-trail", auditTrailRoutes);
 app.use("/api", examResultsRoutes);
 app.use("/api/realtime", realtimeRoutes);
 app.use("/api/exam-session-logs", examSessionLogRoutes);
