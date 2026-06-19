@@ -13,6 +13,7 @@ const {
   CurriculumClassLevel,
 } = require("../models");
 const { applyPayment, money: paymentMoney } = require("../services/feePaymentService");
+const { buildFeeInvoicePdf } = require("../services/feeInvoicePdf");
 
 const userExclude = { exclude: ["password_hash"] };
 
@@ -22,8 +23,16 @@ const invoiceIncludes = [
     as: "student",
     include: [{ model: User, as: "user", attributes: userExclude }],
   },
+  { model: Curriculum, as: "curriculum", attributes: ["id", "name"], required: false },
+  { model: CurriculumClass, as: "curriculum_class", attributes: ["id", "name"], required: false },
   { model: CurriculumClassLevel, as: "curriculum_class_level", attributes: ["id", "name", "level_order"] },
   { model: FeeStructure, as: "fee_structure", attributes: ["id", "term_fee_amount", "payment_breakdown"], required: false },
+  {
+    model: Parent,
+    as: "parent",
+    required: false,
+    include: [{ model: User, as: "user", attributes: userExclude }],
+  },
 ];
 
 const paymentIncludes = [
@@ -58,7 +67,36 @@ function money(n) {
   return paymentMoney(n);
 }
 
-function serializeInvoice(row, creditBalance = 0) {
+function serializePayment(row) {
+  const plain = row.get ? row.get({ plain: true }) : { ...row };
+  return {
+    id: plain.id,
+    receipt_number: plain.receipt_number || null,
+    amount: money(plain.amount),
+    payment_method: plain.payment_method,
+    reference: plain.reference || null,
+    notes: plain.notes || null,
+    paid_at: plain.paid_at,
+  };
+}
+
+async function loadPaymentsByInvoiceIds(invoiceIds) {
+  const map = new Map();
+  if (!invoiceIds.length) return map;
+  const payments = await FeePayment.findAll({
+    where: { fee_invoice_id: { [Op.in]: invoiceIds } },
+    attributes: ["id", "fee_invoice_id", "amount", "payment_method", "reference", "notes", "paid_at"],
+    order: [["paid_at", "DESC"]],
+  });
+  for (const payment of payments) {
+    const key = String(payment.fee_invoice_id);
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(serializePayment(payment));
+  }
+  return map;
+}
+
+function serializeInvoice(row, creditBalance = 0, payments = []) {
   const plain = row.get ? row.get({ plain: true }) : { ...row };
   const studentUser = plain.student?.user;
   return {
@@ -71,6 +109,7 @@ function serializeInvoice(row, creditBalance = 0) {
       : null,
     level_name: plain.curriculum_class_level?.name || null,
     credit_balance: money(creditBalance),
+    payments: Array.isArray(payments) ? payments : [],
   };
 }
 
@@ -140,6 +179,76 @@ async function loadStudentForBilling(studentId) {
   });
 }
 
+async function assertParentCanAccessInvoice(parent, invoice) {
+  const studentIds = Array.isArray(parent.student_ids) ? parent.student_ids.map(String) : [];
+  if (!studentIds.includes(String(invoice.student_id))) {
+    const err = new Error("This invoice is not linked to your account.");
+    err.statusCode = 403;
+    throw err;
+  }
+}
+
+function buildInvoicePdfPayload(row, creditBalance = 0, payments = []) {
+  const plain = row.get ? row.get({ plain: true }) : { ...row };
+  const studentUser = plain.student?.user;
+  const parentUser = plain.parent?.user;
+  return {
+    invoiceNumber: plain.invoice_number,
+    studentName: studentUser?.full_name || studentUser?.username || plain.student?.admission_number || "Student",
+    admissionNumber: plain.student?.admission_number || "—",
+    className: plain.curriculum_class?.name || "—",
+    levelName: plain.curriculum_class_level?.name || "—",
+    curriculumName: plain.curriculum?.name || "—",
+    parentName: parentUser?.full_name || parentUser?.username || null,
+    invoiceDate: plain.sent_at || plain.created_at,
+    status: plain.status,
+    termFeeAmount: plain.term_fee_amount ?? plain.amount_due,
+    amountPaid: plain.amount_paid,
+    balance: plain.balance,
+    creditBalance,
+    paymentBreakdown: plain.payment_breakdown,
+    notes: plain.notes,
+    payments: payments.map((p) => (p.get ? p.get({ plain: true }) : p)),
+  };
+}
+
+async function loadInvoiceForParentPdf(invoiceId, parent) {
+  const invoice = await FeeInvoice.findByPk(invoiceId, { include: invoiceIncludes });
+  if (!invoice) return null;
+  if (invoice.status === "cancelled") return null;
+  await assertParentCanAccessInvoice(parent, invoice);
+  const credit = await getLevelCredit(invoice.student_id, invoice.curriculum_class_level_id);
+  const payments = await FeePayment.findAll({
+    where: { fee_invoice_id: invoice.id },
+    order: [["paid_at", "ASC"]],
+  });
+  return { invoice, credit, payments };
+}
+
+exports.streamMyInvoicePdf = async (req, res) => {
+  try {
+    const parent = await Parent.findOne({ where: { user_id: req.user.id } });
+    if (!parent) {
+      return res.status(404).json({ success: false, message: "Parent profile not found" });
+    }
+
+    const loaded = await loadInvoiceForParentPdf(req.params.id, parent);
+    if (!loaded) {
+      return res.status(404).json({ success: false, message: "Invoice not found" });
+    }
+
+    const { invoice, credit, payments } = loaded;
+    const pdf = await buildFeeInvoicePdf(buildInvoicePdfPayload(invoice, credit, payments));
+    const safeNumber = String(invoice.invoice_number || invoice.id).replace(/[^a-zA-Z0-9-_]/g, "-");
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `inline; filename="invoice-${safeNumber}.pdf"`);
+    return res.send(pdf);
+  } catch (error) {
+    const code = error.statusCode || 500;
+    return res.status(code).json({ success: false, message: error.message });
+  }
+};
+
 exports.listInvoices = async (req, res) => {
   try {
     const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 50));
@@ -167,6 +276,21 @@ exports.listInvoices = async (req, res) => {
   }
 };
 
+exports.getInvoice = async (req, res) => {
+  try {
+    const invoice = await FeeInvoice.findByPk(req.params.id, { include: invoiceIncludes });
+    if (!invoice) {
+      return res.status(404).json({ success: false, message: "Invoice not found" });
+    }
+    const credit = await getLevelCredit(invoice.student_id, invoice.curriculum_class_level_id);
+    const paymentsByInvoice = await loadPaymentsByInvoiceIds([invoice.id]);
+    const payments = paymentsByInvoice.get(String(invoice.id)) || [];
+    return res.json({ success: true, data: serializeInvoice(invoice, credit, payments) });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 exports.listMyInvoices = async (req, res) => {
   try {
     const parent = await Parent.findOne({ where: { user_id: req.user.id } });
@@ -187,10 +311,13 @@ exports.listMyInvoices = async (req, res) => {
       order: [["created_at", "DESC"]],
     });
 
+    const paymentsByInvoice = await loadPaymentsByInvoiceIds(rows.map((row) => row.id));
+
     const data = await Promise.all(
       rows.map(async (row) => {
         const credit = await getLevelCredit(row.student_id, row.curriculum_class_level_id);
-        return serializeInvoice(row, credit);
+        const payments = paymentsByInvoice.get(String(row.id)) || [];
+        return serializeInvoice(row, credit, payments);
       })
     );
 

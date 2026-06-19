@@ -67,6 +67,11 @@ module.exports = (sequelize) => {
         field: "recorded_by",
         references: { model: "users", key: "id" },
       },
+      receipt_number: {
+        type: DataTypes.STRING(40),
+        allowNull: true,
+        unique: true,
+      },
     },
     {
       tableName: "fee_payments",

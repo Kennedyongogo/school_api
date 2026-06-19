@@ -155,6 +155,29 @@ async function ensureFeeBillingSchema() {
       WHERE applied_to_invoice IS NULL OR applied_to_invoice = 0
     `);
   }
+
+  await addColumnIfMissing(
+    "fee_payments",
+    "receipt_number",
+    `ALTER TABLE fee_payments ADD COLUMN receipt_number VARCHAR(40)`
+  );
+  await q(`CREATE UNIQUE INDEX IF NOT EXISTS fee_payments_receipt_number_unique ON fee_payments(receipt_number) WHERE receipt_number IS NOT NULL`);
+
+  const paymentColsAfter = await tableColumns("fee_payments");
+  if (paymentColsAfter.has("receipt_number")) {
+    const [missingReceipt] = await sequelize.query(`
+      SELECT id FROM fee_payments
+      WHERE receipt_number IS NULL OR TRIM(receipt_number) = ''
+      LIMIT 500
+    `);
+    for (const row of missingReceipt || []) {
+      const receiptNumber = `RCP-${String(row.id).replace(/-/g, "").toUpperCase().slice(-10)}`;
+      await sequelize.query(
+        `UPDATE fee_payments SET receipt_number = :receiptNumber WHERE id = :id AND (receipt_number IS NULL OR TRIM(receipt_number) = '')`,
+        { replacements: { receiptNumber, id: row.id } }
+      );
+    }
+  }
 }
 
 module.exports = { ensureFeeBillingSchema };

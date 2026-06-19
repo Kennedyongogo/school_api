@@ -1,5 +1,6 @@
 const { Op } = require("sequelize");
 const {
+  sequelize,
   FeePayment,
   FeeInvoice,
   Student,
@@ -64,10 +65,32 @@ exports.listFeePayments = async (req, res) => {
     if (req.query.q) {
       const q = String(req.query.q).trim();
       if (q) {
-        where[Op.or] = [
-          { reference: { [Op.iLike]: `%${q}%` } },
-          { notes: { [Op.iLike]: `%${q}%` } },
+        const like = { [Op.iLike]: `%${q}%` };
+        const or = [
+          { reference: like },
+          { notes: like },
+          { receipt_number: like },
+          { payment_method: like },
+          sequelize.where(sequelize.cast(sequelize.col("FeePayment.amount"), "TEXT"), like),
+          sequelize.where(sequelize.cast(sequelize.col("FeePayment.applied_to_invoice"), "TEXT"), like),
+          sequelize.where(sequelize.cast(sequelize.col("FeePayment.excess_amount"), "TEXT"), like),
+          { "$student.admission_number$": like },
+          { "$student.user.full_name$": like },
+          { "$student.user.username$": like },
+          { "$parent.user.full_name$": like },
+          { "$parent.user.username$": like },
+          { "$fee_invoice.invoice_number$": like },
+          { "$fee_invoice.status$": like },
+          { "$curriculum_class_level.name$": like },
+          { "$recorded_by_user.full_name$": like },
+          { "$recorded_by_user.username$": like },
         ];
+        const amountNum = Number.parseFloat(q.replace(/,/g, ""));
+        if (Number.isFinite(amountNum)) {
+          or.push({ amount: amountNum });
+          or.push({ applied_to_invoice: amountNum });
+        }
+        where[Op.or] = or;
       }
     }
 
@@ -78,6 +101,7 @@ exports.listFeePayments = async (req, res) => {
       limit,
       offset,
       distinct: true,
+      subQuery: false,
     });
 
     return res.json({

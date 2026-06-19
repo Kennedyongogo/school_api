@@ -143,7 +143,7 @@ exports.getStats = async (req, res) => {
     }));
 
     const activeSubjects = await CurriculumSubject.findAll({
-      attributes: ["id", "curriculum_class_id", "curriculum_class_level_id"],
+      attributes: ["id", "curriculum_id", "curriculum_class_id", "curriculum_class_level_id"],
       where: { is_active: true },
       include: [
         {
@@ -162,7 +162,7 @@ exports.getStats = async (req, res) => {
     });
 
     const subjectCountByClassId = new Map();
-    let curriculumWideSubjectCount = 0;
+    const curriculumWideByCurriculumId = new Map();
     for (const subject of activeSubjects) {
       const plain = subject.get({ plain: true });
       const classId =
@@ -173,8 +173,12 @@ exports.getStats = async (req, res) => {
       if (classId) {
         const key = String(classId);
         subjectCountByClassId.set(key, (subjectCountByClassId.get(key) || 0) + 1);
-      } else {
-        curriculumWideSubjectCount += 1;
+      } else if (plain.curriculum_id) {
+        const key = String(plain.curriculum_id);
+        curriculumWideByCurriculumId.set(
+          key,
+          (curriculumWideByCurriculumId.get(key) || 0) + 1
+        );
       }
     }
 
@@ -193,22 +197,27 @@ exports.getStats = async (req, res) => {
       };
     });
 
-    if (curriculumWideSubjectCount > 0) {
-      subjectsByClass.push({
-        class_id: null,
-        class_name: "Curriculum-wide",
-        class_code: null,
-        curriculum_id: null,
-        curriculum_name: null,
-        label: "Curriculum-wide",
-        subject_count: curriculumWideSubjectCount,
-      });
+    for (const curriculum of curricula) {
+      const plain = curriculum.get({ plain: true });
+      const wideCount = curriculumWideByCurriculumId.get(String(plain.id)) || 0;
+      if (wideCount > 0) {
+        subjectsByClass.push({
+          class_id: null,
+          class_name: "General",
+          class_code: null,
+          curriculum_id: plain.id,
+          curriculum_name: plain.name || null,
+          label: "General",
+          subject_count: wideCount,
+        });
+      }
     }
 
     const subjectsBarSeries = subjectsByClass.map((row) => ({
       x: row.label,
       y: row.subject_count,
       class_id: row.class_id,
+      curriculum_id: row.curriculum_id,
     }));
 
     const totalActiveSubjects = activeSubjects.length;
@@ -232,6 +241,7 @@ exports.getStats = async (req, res) => {
             x: row.label,
             y: row.student_count,
             class_id: row.class_id,
+            curriculum_id: row.curriculum_id,
           })),
         },
         subjects_by_class: subjectsByClass,
@@ -240,6 +250,15 @@ exports.getStats = async (req, res) => {
           y_axis: "subject_count",
           series: subjectsBarSeries,
         },
+        curricula: curricula.map((c) => {
+          const plain = c.get({ plain: true });
+          return {
+            id: plain.id,
+            name: plain.name,
+            type: plain.type || null,
+            label: plain.name || plain.type || "Curriculum",
+          };
+        }),
         students_by_curriculum: studentsByCurriculum,
         pie_chart: {
           dimension: "curriculum",

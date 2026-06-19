@@ -3,6 +3,7 @@ const {
   FeePayment,
   StudentLevelFeeCredit,
 } = require("../models");
+const { buildReceiptNumber } = require("../utils/feeReceiptNumber");
 
 function money(n) {
   return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
@@ -78,6 +79,7 @@ async function applyPayment({
       fee_invoice_id: invoice.id,
       student_id: invoice.student_id,
       parent_id: parentId || null,
+      curriculum_class_level_id: invoice.curriculum_class_level_id,
       amount: payAmount,
       applied_to_invoice: applied,
       excess_amount: excess,
@@ -86,6 +88,7 @@ async function applyPayment({
       notes: notes || null,
       paid_at: new Date(),
       recorded_by_user_id: recordedByUserId || null,
+      receipt_number: buildReceiptNumber(),
     },
     { transaction }
   );
@@ -93,6 +96,8 @@ async function applyPayment({
   return {
     payment,
     payment_receipt: {
+      receipt_number: payment.receipt_number,
+      payment_id: payment.id,
       amount_submitted: payAmount,
       applied_to_invoice: applied,
       excess_from_payment: excess,

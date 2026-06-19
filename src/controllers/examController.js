@@ -133,15 +133,25 @@ async function ensureExamAttemptForProctoring(exam, studentId, submission = null
   return attempt;
 }
 
+const { normalizeWallClockToDate } = require("../utils/examScheduleTime");
+
 const applySchedulingFields = (body, payload, isCreate, userId) => {
   const src = body && typeof body === "object" ? body : {};
   const set = (key, val) => {
     if (val !== undefined) payload[key] = val;
   };
   set("teacher_id", src.teacher_id);
-  set("start_time", src.start_time);
-  set("end_time", src.end_time);
   set("timezone", src.timezone);
+  const scheduleTimezone =
+    src.timezone !== undefined && src.timezone !== null && String(src.timezone).trim() !== ""
+      ? String(src.timezone).trim()
+      : payload.timezone || "Africa/Nairobi";
+  if (src.start_time !== undefined) {
+    set("start_time", normalizeWallClockToDate(src.start_time, scheduleTimezone));
+  }
+  if (src.end_time !== undefined) {
+    set("end_time", normalizeWallClockToDate(src.end_time, scheduleTimezone));
+  }
   set("is_active", src.is_active);
   set("proctoring_mode", src.proctoring_mode);
   set("proctoring_rules_json", src.proctoring_rules_json);
@@ -1187,6 +1197,13 @@ exports.updateExam = async (req, res) => {
         curriculum_class_id: classId,
         curriculum_class_level_id: levelId,
       });
+    }
+    const scheduleTimezone = patch.timezone ?? row.timezone ?? "Africa/Nairobi";
+    if (patch.start_time !== undefined) {
+      patch.start_time = normalizeWallClockToDate(patch.start_time, scheduleTimezone);
+    }
+    if (patch.end_time !== undefined) {
+      patch.end_time = normalizeWallClockToDate(patch.end_time, scheduleTimezone);
     }
     await row.update(patch);
     if (Array.isArray(req.body.questions)) {

@@ -148,6 +148,7 @@ const { ensureReportCardSchema } = require("../utils/ensureReportCardSchema");
 const { ensureInAppNotificationSchema } = require("../utils/ensureInAppNotificationSchema");
 const { ensureFeeBillingSchema } = require("../utils/ensureFeeBillingSchema");
 const { ensureAuditTrailSchema } = require("../utils/ensureAuditTrailSchema");
+const { ensureAdmissionApplicationSchema } = require("../utils/ensureAdmissionApplicationSchema");
 const initializeModels = async () => {
   try {
     console.log("🔄 Creating/updating school system tables...");
@@ -156,6 +157,7 @@ const initializeModels = async () => {
     await ensureInAppNotificationSchema();
     await ensureFeeBillingSchema();
     await ensureAuditTrailSchema();
+    await ensureAdmissionApplicationSchema();
     await User.sync({ force: false, alter: false });
     await GoogleMeetCredential.sync({ force: false, alter: true });
     await Teacher.sync({ force: false, alter: false });

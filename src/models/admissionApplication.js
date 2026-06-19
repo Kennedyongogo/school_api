@@ -19,9 +19,33 @@ module.exports = (sequelize) => {
         unique: true,
       },
       status: {
-        type: DataTypes.ENUM(...ADMISSION_STATUSES),
+        type: DataTypes.STRING(30),
         allowNull: false,
         defaultValue: DEFAULT_ADMISSION_STATUS,
+        validate: {
+          isIn: [ADMISSION_STATUSES],
+        },
+      },
+      interview_date: {
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
+      acceptance_notes: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
+      rejection_reason: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
+      last_notified_at: {
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
+      notification_status: {
+        type: DataTypes.STRING(24),
+        allowNull: true,
+        defaultValue: "pending",
       },
       curriculum_level: {
         type: DataTypes.STRING(50),
