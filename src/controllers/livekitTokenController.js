@@ -42,6 +42,7 @@ exports.issueLiveKitToken = async (req, res) => {
       lesson_date: live.timetable_lesson?.lesson_date,
       starts_at: live.timetable_lesson?.starts_at,
       ends_at: live.timetable_lesson?.ends_at,
+      timezone: live.timetable_lesson?.timezone,
       session_status: live.session_status,
       is_staff: isStaff,
     });

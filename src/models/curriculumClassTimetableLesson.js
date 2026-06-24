@@ -80,6 +80,12 @@ module.exports = (sequelize) => {
         allowNull: false,
         defaultValue: false,
       },
+      /** Wall-clock timezone for lesson_date + starts_at / ends_at (same as exam schedules). */
+      timezone: {
+        type: DataTypes.STRING(64),
+        allowNull: false,
+        defaultValue: "Africa/Nairobi",
+      },
     },
     {
       tableName: "curriculum_class_timetable_lessons",

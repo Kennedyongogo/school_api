@@ -67,6 +67,7 @@ exports.getLiveClassRoom = async (req, res) => {
       lesson_date: live.timetable_lesson?.lesson_date,
       starts_at: live.timetable_lesson?.starts_at,
       ends_at: live.timetable_lesson?.ends_at,
+      timezone: live.timetable_lesson?.timezone,
       session_status: live.session_status,
       is_staff: isStaff,
     });
@@ -90,6 +91,7 @@ exports.getLiveClassRoom = async (req, res) => {
         lesson_date: live.timetable_lesson?.lesson_date || null,
         starts_at: live.timetable_lesson?.starts_at || null,
         ends_at: live.timetable_lesson?.ends_at || null,
+        timezone: live.timetable_lesson?.timezone || "Africa/Nairobi",
         can_join: joinWindow.can_join,
         join_blocked_reason: joinWindow.reason,
         join_opens_at: joinWindow.opens_at,

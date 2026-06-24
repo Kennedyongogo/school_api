@@ -269,14 +269,13 @@ async function assertCanInitiateOnlineLive(req, lesson) {
   }
 }
 
+const { lessonSlotToDate } = require("../utils/examScheduleTime");
+
 function lessonWindowDates(lesson) {
-  const d = lesson.lesson_date;
-  const s = lesson.starts_at;
-  const e = lesson.ends_at;
-  if (!d || s == null || e == null || s === "" || e === "") return null;
-  const start_time = new Date(`${String(d).trim()}T${String(s).trim().slice(0, 8)}`);
-  const end_time = new Date(`${String(d).trim()}T${String(e).trim().slice(0, 8)}`);
-  if (Number.isNaN(start_time.getTime()) || Number.isNaN(end_time.getTime())) return null;
+  const timezone = lesson?.timezone || "Africa/Nairobi";
+  const start_time = lessonSlotToDate(lesson?.lesson_date, lesson?.starts_at, timezone);
+  const end_time = lessonSlotToDate(lesson?.lesson_date, lesson?.ends_at, timezone);
+  if (!start_time || !end_time) return null;
   if (end_time <= start_time) {
     return { start_time, end_time: new Date(start_time.getTime() + 3600000) };
   }
@@ -663,6 +662,11 @@ exports.createTimetableLesson = async (req, res) => {
       media_mode,
     } = req.body;
 
+    const lessonTimezone =
+      req.body.timezone != null && String(req.body.timezone).trim() !== ""
+        ? String(req.body.timezone).trim()
+        : "Africa/Nairobi";
+
     if (!lesson_date || typeof lesson_date !== "string") {
       return res.status(400).json({ success: false, message: "lesson_date is required (YYYY-MM-DD)" });
     }
@@ -738,6 +742,7 @@ exports.createTimetableLesson = async (req, res) => {
         normalizeDeliveryMode(delivery_mode) === "online"
           ? normalizeMediaMode(media_mode)
           : "optional",
+      timezone: lessonTimezone,
     });
 
     const created = await CurriculumClassTimetableLesson.findByPk(row.id, { include: lessonInclude });
@@ -792,6 +797,12 @@ exports.updateTimetableLesson = async (req, res) => {
     }
     if (req.body.starts_at !== undefined) patch.starts_at = req.body.starts_at || null;
     if (req.body.ends_at !== undefined) patch.ends_at = req.body.ends_at || null;
+    if (req.body.timezone !== undefined) {
+      patch.timezone =
+        req.body.timezone != null && String(req.body.timezone).trim() !== ""
+          ? String(req.body.timezone).trim()
+          : "Africa/Nairobi";
+    }
     if (req.body.room !== undefined) patch.room = req.body.room;
     if (req.body.notes !== undefined) patch.notes = req.body.notes;
     if (req.body.teacher_attended !== undefined) patch.teacher_attended = !!req.body.teacher_attended;

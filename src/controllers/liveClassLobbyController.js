@@ -31,6 +31,7 @@ async function assertLessonOpenForStudent(live) {
     lesson_date: lesson?.lesson_date,
     starts_at: lesson?.starts_at,
     ends_at: lesson?.ends_at,
+    timezone: lesson?.timezone,
     session_status: live?.session_status,
   });
 }

@@ -120,6 +120,7 @@ exports.listMyStudentTimetableLessons = async (req, res) => {
               lesson_date: l.lesson_date,
               starts_at: l.starts_at,
               ends_at: l.ends_at,
+              timezone: l.timezone,
               session_status: live.session_status,
             })
           : { can_join: false, reason: null };
@@ -128,6 +129,7 @@ exports.listMyStudentTimetableLessons = async (req, res) => {
         lesson_date: l.lesson_date,
         starts_at: l.starts_at,
         ends_at: l.ends_at,
+        timezone: l.timezone || "Africa/Nairobi",
         delivery_mode: l.delivery_mode,
         room: l.room,
         notes: l.notes,

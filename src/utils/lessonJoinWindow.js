@@ -3,15 +3,9 @@
  * Staff bypass this check at the controller layer.
  */
 
-const EARLY_JOIN_MINUTES = 15;
+const { DEFAULT_SCHEDULE_TIMEZONE, lessonSlotToDate } = require("./examScheduleTime");
 
-function parseClockOnDate(dateOnly, timeValue) {
-  if (!dateOnly) return null;
-  const dateStr = String(dateOnly).slice(0, 10);
-  const timeStr = timeValue != null && String(timeValue).trim() !== "" ? String(timeValue).slice(0, 8) : "00:00:00";
-  const d = new Date(`${dateStr}T${timeStr}`);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
+const EARLY_JOIN_MINUTES = 15;
 
 /**
  * @returns {{ can_join: boolean, reason: string|null, opens_at: string|null, closes_at: string|null }}
@@ -21,6 +15,7 @@ function getLessonJoinWindow({
   starts_at,
   ends_at,
   session_status,
+  timezone = DEFAULT_SCHEDULE_TIMEZONE,
   is_staff = false,
   early_minutes = EARLY_JOIN_MINUTES,
 }) {
@@ -37,8 +32,10 @@ function getLessonJoinWindow({
     };
   }
 
-  const slotStart = parseClockOnDate(lesson_date, starts_at);
-  const slotEnd = parseClockOnDate(lesson_date, ends_at || starts_at);
+  const scheduleTimezone =
+    timezone != null && String(timezone).trim() !== "" ? String(timezone).trim() : DEFAULT_SCHEDULE_TIMEZONE;
+  const slotStart = lessonSlotToDate(lesson_date, starts_at, scheduleTimezone);
+  const slotEnd = lessonSlotToDate(lesson_date, ends_at || starts_at, scheduleTimezone);
 
   if (!slotStart || !slotEnd) {
     return { can_join: true, reason: null, opens_at: null, closes_at: null };
