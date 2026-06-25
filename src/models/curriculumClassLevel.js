@@ -32,6 +32,14 @@ module.exports = (sequelize) => {
         type: DataTypes.TEXT,
         allowNull: true,
       },
+      start_date: {
+        type: DataTypes.DATEONLY,
+        allowNull: true,
+      },
+      end_date: {
+        type: DataTypes.DATEONLY,
+        allowNull: true,
+      },
     },
     {
       tableName: "curriculum_class_levels",

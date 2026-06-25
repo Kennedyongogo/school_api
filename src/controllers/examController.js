@@ -1751,6 +1751,7 @@ exports.listExamSubmissionsForMarking = async (req, res) => {
           question_text: a.question?.question_text || "Question",
           question_marks: Number(a.question?.marks || 0),
           marks_obtained: a.marks_obtained != null ? Number(a.marks_obtained) : null,
+          marker_comment: a.marker_comment || null,
           answer_text: a.answer_text,
           answer_json: a.answer_json,
           order_number: Number(a.question?.order_number || 0),
@@ -1868,29 +1869,42 @@ exports.markExamAnswer = async (req, res) => {
     if (!submission || submission.exam_id !== exam.id) {
       return res.status(404).json({ success: false, message: "Submission not found for this exam" });
     }
-    const answer = await ExamAnswer.findByPk(req.params.answerId);
+    const answer = await ExamAnswer.findByPk(req.params.answerId, {
+      include: [{ model: ExamQuestion, as: "question", attributes: ["id", "marks"] }],
+    });
     if (!answer || answer.submission_id !== submission.id) {
       return res.status(404).json({ success: false, message: "Answer not found for this submission" });
     }
 
-
-
-    const marksObtained = Number(req.body?.marks_obtained);
-    if (!Number.isFinite(marksObtained) || marksObtained < 0) {
-      return res.status(400).json({ success: false, message: "marks_obtained must be a valid non-negative number." });
+    const payload = {};
+    const hasMarks = req.body?.marks_obtained !== undefined && req.body?.marks_obtained !== null && req.body?.marks_obtained !== "";
+    if (hasMarks) {
+      const marksObtained = Number(req.body.marks_obtained);
+      if (!Number.isFinite(marksObtained) || marksObtained < 0) {
+        return res.status(400).json({ success: false, message: "marks_obtained must be a valid non-negative number." });
+      }
+      const questionMarks = Number(answer.question?.marks || 0);
+      if (questionMarks > 0 && marksObtained > questionMarks) {
+        return res.status(400).json({ success: false, message: `marks_obtained cannot exceed question marks (${questionMarks}).` });
+      }
+      payload.marks_obtained = marksObtained;
     }
-    const questionMarks = Number(answer.question?.marks || 0);
-    if (questionMarks > 0 && marksObtained > questionMarks) {
-      return res.status(400).json({ success: false, message: `marks_obtained cannot exceed question marks (${questionMarks}).` });
+    if (req.body?.marker_comment !== undefined) {
+      const raw = req.body.marker_comment;
+      payload.marker_comment = raw == null || String(raw).trim() === "" ? null : String(raw).trim().slice(0, 2000);
+    }
+    if (!Object.keys(payload).length) {
+      return res.status(400).json({ success: false, message: "Provide marks_obtained and/or marker_comment." });
     }
 
-    await answer.update({ marks_obtained: marksObtained });
+    await answer.update(payload);
 
     return res.json({
       success: true,
       data: {
         answer_id: answer.id,
         marks_obtained: answer.marks_obtained,
+        marker_comment: answer.marker_comment,
       },
     });
   } catch (error) {

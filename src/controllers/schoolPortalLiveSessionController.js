@@ -99,7 +99,7 @@ exports.recordLiveSessionJoin = async (req, res) => {
 
     const student = await Student.findOne({
       where: { user_id: req.user.id },
-      attributes: ["id", "user_id", "curriculum_class_id"],
+      attributes: ["id", "user_id", "curriculum_class_id", "curriculum_class_level_id"],
     });
     if (!student) {
       return res.status(404).json({ success: false, message: "Student profile not found" });

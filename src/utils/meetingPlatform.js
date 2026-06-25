@@ -9,6 +9,15 @@ function isGoogleMeetPlatform(platform) {
   return p === "google_meet" || p === "googlemeet" || p === "meet";
 }
 
+function isTeamsPlatform(platform) {
+  const p = platform == null ? "" : String(platform).trim().toLowerCase().replace(/-/g, "_");
+  return p === "teams" || p === "microsoft_teams";
+}
+
+function isExternalVideoPlatform(platform) {
+  return !isInAppVideoPlatform(platform);
+}
+
 function defaultOnlineMeetingMode() {
   return String(process.env.ONLINE_MEETING_PLATFORM || "livekit").trim().toLowerCase();
 }
@@ -16,5 +25,7 @@ function defaultOnlineMeetingMode() {
 module.exports = {
   isInAppVideoPlatform,
   isGoogleMeetPlatform,
+  isTeamsPlatform,
+  isExternalVideoPlatform,
   defaultOnlineMeetingMode,
 };

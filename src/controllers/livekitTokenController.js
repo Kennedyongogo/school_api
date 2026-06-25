@@ -45,6 +45,7 @@ exports.issueLiveKitToken = async (req, res) => {
       timezone: live.timetable_lesson?.timezone,
       session_status: live.session_status,
       is_staff: isStaff,
+      live_end_time: live.end_time,
     });
 
     if (!joinWindow.can_join) {

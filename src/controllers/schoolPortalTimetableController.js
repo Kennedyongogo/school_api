@@ -13,9 +13,6 @@ const {
   Exam,
   ExamAttempt,
   ExamSubmission,
-  ExamAnswer,
-  ExamQuestion,
-  StudentExamResult,
 } = require("../models");
 const { Op } = require("sequelize");
 
@@ -31,6 +28,10 @@ function studentExamSortTimestamp(row) {
 const { getLessonJoinWindow } = require("../utils/lessonJoinWindow");
 const { examAccessPolicyForMode, normalizeMode } = require("../utils/examProctoring");
 const { isPdfFormExam } = require("../utils/examPdfForm");
+const { loadStudentExamResultForPortal } = require("../utils/studentExamResult");
+const { generateExamResultPdfBuffer } = require("../services/examResultPdf");
+const fs = require("fs");
+const path = require("path");
 const {
   autoSubmitElapsedDraftIfNeeded,
   buildStudentExamAccess,
@@ -39,12 +40,71 @@ const {
   isStudentAssignedToExam,
   indexSubmissionsByExam,
 } = require("../utils/examAssignedStudents");
+const { timetableWhereForStudent } = require("../utils/lessonTermRoster");
+
+function mapStudentTimetableLesson(l, student) {
+  const live = Array.isArray(l.live_sessions) && l.live_sessions.length ? l.live_sessions[0] : null;
+  const attendance =
+    live && Array.isArray(live.live_attendances) && live.live_attendances.length
+      ? live.live_attendances[0]
+      : null;
+  const attendanceLabel = attendance ? "Attended" : "Pending";
+  const joinWindow =
+    live && String(l.delivery_mode || "").toLowerCase() === "online"
+      ? getLessonJoinWindow({
+          lesson_date: l.lesson_date,
+          starts_at: l.starts_at,
+          ends_at: l.ends_at,
+          timezone: l.timezone,
+          session_status: live.session_status,
+          live_end_time: live.end_time,
+        })
+      : { can_join: false, reason: null };
+  return {
+    id: l.id,
+    lesson_date: l.lesson_date,
+    starts_at: l.starts_at,
+    ends_at: l.ends_at,
+    timezone: l.timezone || "Africa/Nairobi",
+    delivery_mode: l.delivery_mode,
+    room: l.room,
+    notes: l.notes,
+    curriculum: l.timetable?.curriculum_class?.curriculum || null,
+    curriculum_class: l.timetable?.curriculum_class || null,
+    curriculum_class_level: l.timetable?.curriculum_class_level || null,
+    subject: l.curriculum_subject || null,
+    teacher: l.teacher || null,
+    attendance: attendance
+      ? {
+          status: attendanceLabel,
+          join_time: attendance.join_time,
+          leave_time: attendance.leave_time,
+          duration_minutes: attendance.duration_minutes,
+        }
+      : { status: attendanceLabel },
+    live_session: live
+      ? {
+          id: live.id,
+          meeting_id: live.meeting_id,
+          join_url: live.join_url,
+          session_status: live.session_status,
+          platform: live.platform,
+          end_time: live.end_time,
+          created_at: live.created_at,
+          can_join: joinWindow.can_join,
+          join_blocked_reason: joinWindow.reason,
+          join_opens_at: joinWindow.opens_at,
+          join_closes_at: joinWindow.closes_at,
+        }
+      : null,
+  };
+}
 
 exports.listMyStudentTimetableLessons = async (req, res) => {
   try {
     const student = await Student.findOne({
       where: { user_id: req.user?.id },
-      attributes: ["id", "curriculum_id", "curriculum_class_id"],
+      attributes: ["id", "curriculum_id", "curriculum_class_id", "curriculum_class_level_id"],
     });
     if (!student) {
       return res.status(404).json({ success: false, message: "Student profile not found." });
@@ -53,20 +113,38 @@ exports.listMyStudentTimetableLessons = async (req, res) => {
       return res.json({ success: true, data: [] });
     }
 
+    const timetableWhere = timetableWhereForStudent(student);
+    if (!timetableWhere) {
+      return res.json({ success: true, data: [] });
+    }
+
+    const dateFilter = String(req.query?.date || "").trim().slice(0, 10);
+    const lessonWhere = {};
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateFilter)) {
+      lessonWhere.lesson_date = dateFilter;
+    }
+
     const lessons = await CurriculumClassTimetableLesson.findAll({
+      where: lessonWhere,
       include: [
         {
           model: CurriculumClassTimetable,
           as: "timetable",
-          attributes: ["id", "name", "curriculum_class_id"],
+          attributes: ["id", "name", "curriculum_class_id", "curriculum_class_level_id"],
           required: true,
-          where: { curriculum_class_id: student.curriculum_class_id },
+          where: timetableWhere,
           include: [
             {
               model: CurriculumClass,
               as: "curriculum_class",
               attributes: ["id", "name", "code", "curriculum_id"],
               include: [{ model: Curriculum, as: "curriculum", attributes: ["id", "name", "type"] }],
+            },
+            {
+              model: CurriculumClassLevel,
+              as: "curriculum_class_level",
+              attributes: ["id", "name", "level_order", "start_date", "end_date"],
+              required: false,
             },
           ],
         },
@@ -85,7 +163,17 @@ exports.listMyStudentTimetableLessons = async (req, res) => {
           separate: true,
           limit: 1,
           order: [["created_at", "DESC"]],
-          attributes: ["id", "meeting_id", "join_url", "host_url", "session_status", "platform", "created_at"],
+          attributes: [
+            "id",
+            "meeting_id",
+            "join_url",
+            "host_url",
+            "session_status",
+            "platform",
+            "start_time",
+            "end_time",
+            "created_at",
+          ],
           include: [
             {
               model: LiveClassAttendance,
@@ -97,70 +185,18 @@ exports.listMyStudentTimetableLessons = async (req, res) => {
           ],
         },
       ],
-      order: [
-        ["lesson_date", "DESC"],
-        ["starts_at", "DESC"],
-      ],
+      order: dateFilter
+        ? [
+            ["starts_at", "ASC"],
+            ["created_at", "ASC"],
+          ]
+        : [
+            ["lesson_date", "DESC"],
+            ["starts_at", "DESC"],
+          ],
     });
 
-    const data = lessons.map((l) => {
-      const live = Array.isArray(l.live_sessions) && l.live_sessions.length ? l.live_sessions[0] : null;
-      const attendance =
-        live && Array.isArray(live.live_attendances) && live.live_attendances.length
-          ? live.live_attendances[0]
-          : null;
-      const attendanceLabel = attendance
-        ? "Attended"
-        : l.delivery_mode === "online"
-        ? "Pending"
-        : "Pending";
-      const joinWindow =
-        live && String(l.delivery_mode || "").toLowerCase() === "online"
-          ? getLessonJoinWindow({
-              lesson_date: l.lesson_date,
-              starts_at: l.starts_at,
-              ends_at: l.ends_at,
-              timezone: l.timezone,
-              session_status: live.session_status,
-            })
-          : { can_join: false, reason: null };
-      return {
-        id: l.id,
-        lesson_date: l.lesson_date,
-        starts_at: l.starts_at,
-        ends_at: l.ends_at,
-        timezone: l.timezone || "Africa/Nairobi",
-        delivery_mode: l.delivery_mode,
-        room: l.room,
-        notes: l.notes,
-        curriculum: l.timetable?.curriculum_class?.curriculum || null,
-        curriculum_class: l.timetable?.curriculum_class || null,
-        subject: l.curriculum_subject || null,
-        teacher: l.teacher || null,
-        attendance: attendance
-          ? {
-              status: attendanceLabel,
-              join_time: attendance.join_time,
-              leave_time: attendance.leave_time,
-              duration_minutes: attendance.duration_minutes,
-            }
-          : { status: attendanceLabel },
-        live_session: live
-          ? {
-              id: live.id,
-              meeting_id: live.meeting_id,
-              join_url: live.join_url,
-              session_status: live.session_status,
-              platform: live.platform,
-              created_at: live.created_at,
-              can_join: joinWindow.can_join,
-              join_blocked_reason: joinWindow.reason,
-              join_opens_at: joinWindow.opens_at,
-              join_closes_at: joinWindow.closes_at,
-            }
-          : null,
-      };
-    });
+    const data = lessons.map((l) => mapStudentTimetableLesson(l, student));
 
     return res.json({ success: true, data });
   } catch (error) {
@@ -329,82 +365,84 @@ exports.getMyStudentExamResult = async (req, res) => {
       return res.status(400).json({ success: false, message: "exam id is required." });
     }
 
-    const student = await Student.findOne({
-      where: { user_id: req.user?.id },
-      attributes: ["id", "curriculum_id", "curriculum_class_id"],
-    });
-    if (!student) {
-      return res.status(404).json({ success: false, message: "Student profile not found." });
-    }
-
-    const exam = await Exam.findByPk(examId, {
-      attributes: ["id", "title", "exam_type", "total_marks"],
-    });
-    if (!exam) {
-      return res.status(404).json({ success: false, message: "Exam not found." });
-    }
-
-    const result = await StudentExamResult.findOne({
-      where: { exam_id: exam.id, student_id: student.id },
-      include: [
-        {
-          model: CurriculumSubject,
-          as: "curriculum_subject",
-          attributes: ["id", "name"],
-        },
-      ],
-    });
-    if (!result) {
-      return res.status(404).json({ success: false, message: "Exam result not found. The exam may not have been graded yet." });
-    }
-
-    const pdfForm = isPdfFormExam(exam);
-    const totalMax = Math.max(0, Number(exam.total_marks || result.total_marks || 0)) || 100;
-
-    let questions = [];
-    if (!pdfForm) {
-      const submission = await ExamSubmission.findOne({
-        where: { exam_id: exam.id, student_id: student.id, status: "submitted" },
+    const loaded = await loadStudentExamResultForPortal({ userId: req.user?.id, examId });
+    if (loaded.error) {
+      return res.status(loaded.error.status).json({
+        success: false,
+        message: loaded.error.message,
+        code: loaded.error.code || null,
       });
-      if (submission) {
-        const answers = await ExamAnswer.findAll({
-          where: { submission_id: submission.id },
-          include: [
-            {
-              model: ExamQuestion,
-              as: "question",
-              required: true,
-              attributes: ["id", "question_text", "marks"],
-            },
-          ],
-          order: [["created_at", "ASC"]],
-        });
-
-        questions = answers
-          .filter((a) => a.question)
-          .map((a) => ({
-            question: a.question.question_text,
-            score: Number(a.marks_obtained || 0),
-            maxScore: Number(a.question.marks || 0),
-          }));
-      }
     }
 
-    const totalScore = Number(result.marks_obtained ?? result.marks ?? 0);
-    const data = {
-      examType: exam.exam_type || "questions",
-      showQuestionBreakdown: !pdfForm,
-      totalScore,
-      totalMax,
-      percentage: totalMax > 0 ? Number(((totalScore / totalMax) * 100).toFixed(1)) : null,
-      grade: result.grade_letter || result.grade,
-      gradeRemarks: result.grade_remarks || null,
-      questions,
-    };
-
-    return res.json({ success: true, data });
+    return res.json({ success: true, data: loaded.data });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message || "Could not load exam result." });
+  }
+};
+
+exports.streamMyStudentExamResultPdf = async (req, res) => {
+  try {
+    const examId = req.params.examScheduleId || req.params.examId;
+    if (!examId) {
+      return res.status(400).json({ success: false, message: "exam id is required." });
+    }
+
+    const loaded = await loadStudentExamResultForPortal({ userId: req.user?.id, examId });
+    if (loaded.error) {
+      return res.status(loaded.error.status).json({
+        success: false,
+        message: loaded.error.message,
+        code: loaded.error.code || null,
+      });
+    }
+
+    const pdfBuffer = await generateExamResultPdfBuffer(loaded.data);
+    const safeTitle = String(loaded.data.examTitle || "exam")
+      .replace(/[^\w\s-]/g, "")
+      .trim()
+      .replace(/\s+/g, "-")
+      .slice(0, 60) || "exam";
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="exam-result-${safeTitle}.pdf"`);
+    return res.send(pdfBuffer);
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message || "Could not generate exam result PDF." });
+  }
+};
+
+exports.streamMyStudentExamAnsweredPdf = async (req, res) => {
+  try {
+    const examId = req.params.examScheduleId || req.params.examId;
+    if (!examId) {
+      return res.status(400).json({ success: false, message: "exam id is required." });
+    }
+
+    const loaded = await loadStudentExamResultForPortal({ userId: req.user?.id, examId });
+    if (loaded.error) {
+      return res.status(loaded.error.status).json({ success: false, message: loaded.error.message });
+    }
+    if (!isPdfFormExam(loaded.exam)) {
+      return res.status(400).json({ success: false, message: "This exam is not a PDF form exam." });
+    }
+    const relPath = loaded.submission?.pdf_completed_file_path;
+    if (!relPath) {
+      return res.status(404).json({ success: false, message: "Answered exam PDF is not available." });
+    }
+    const absPath = path.join(__dirname, "..", "..", String(relPath).replace(/^\/+/, ""));
+    if (!fs.existsSync(absPath)) {
+      return res.status(404).json({ success: false, message: "Answered exam PDF file not found." });
+    }
+
+    const safeTitle = String(loaded.data.examTitle || "exam")
+      .replace(/[^\w\s-]/g, "")
+      .trim()
+      .replace(/\s+/g, "-")
+      .slice(0, 60) || "exam";
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="exam-answered-${safeTitle}.pdf"`);
+    return fs.createReadStream(absPath).pipe(res);
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message || "Could not download answered exam PDF." });
   }
 };
 

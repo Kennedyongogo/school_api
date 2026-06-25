@@ -6,7 +6,9 @@ const {
   CurriculumClassTimetable,
   CurriculumSubject,
   CurriculumClass,
+  CurriculumClassLevel,
 } = require("../models");
+const { timetableWhereForStudent } = require("../utils/lessonTermRoster");
 
 const TT_LESSON_MEETING_RE =
   /^tt-lesson-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i;
@@ -22,7 +24,7 @@ const liveClassAccessInclude = [
         model: CurriculumClassTimetable,
         as: "timetable",
         required: false,
-        attributes: ["id", "curriculum_class_id"],
+        attributes: ["id", "curriculum_class_id", "curriculum_class_level_id"],
       },
       {
         model: CurriculumSubject,
@@ -123,9 +125,11 @@ async function loadLiveClassForAccess(liveClassId) {
   return live;
 }
 
-/** Same rule as portal timetable list: lesson belongs to a timetable for the student's class. */
-async function isLessonVisibleToStudentClass(lessonId, studentCurriculumClassId) {
-  if (!lessonId || !studentCurriculumClassId) return false;
+/** Same rule as portal timetable list: lesson belongs to the student's class and term. */
+async function isLessonVisibleToStudent(student, lessonId) {
+  if (!student?.curriculum_class_id || !lessonId) return false;
+  const timetableWhere = timetableWhereForStudent(student);
+  if (!timetableWhere) return false;
   const count = await CurriculumClassTimetableLesson.count({
     where: { id: lessonId },
     include: [
@@ -133,7 +137,7 @@ async function isLessonVisibleToStudentClass(lessonId, studentCurriculumClassId)
         model: CurriculumClassTimetable,
         as: "timetable",
         required: true,
-        where: { curriculum_class_id: studentCurriculumClassId },
+        where: timetableWhere,
       },
     ],
   });
@@ -147,6 +151,27 @@ function audienceClassIdsFromLive(live) {
   if (fromTimetable) ids.add(String(fromTimetable));
   if (fromSubject) ids.add(String(fromSubject));
   return ids;
+}
+
+async function buildAccessDeniedMessage(student, live) {
+  const timetable = live?.timetable_lesson?.timetable;
+  const lessonClassId = timetable?.curriculum_class_id || live?.timetable_lesson?.curriculum_subject?.curriculum_class_id || null;
+  const studentClassId = student?.curriculum_class_id ? String(student.curriculum_class_id) : null;
+
+  if (studentClassId && lessonClassId && studentClassId === String(lessonClassId)) {
+    const lessonTermId = timetable?.curriculum_class_level_id || null;
+    if (lessonTermId) {
+      let lessonTermName = live?.timetable_lesson?.timetable?.curriculum_class_level?.name || null;
+      if (!lessonTermName) {
+        const level = await CurriculumClassLevel.findByPk(lessonTermId, { attributes: ["id", "name"] });
+        lessonTermName = level?.name || null;
+      }
+      const termLabel = lessonTermName ? String(lessonTermName).trim() : "another term";
+      return `This online class is for ${termLabel}. Your student profile is set to a different term, so this lesson is not on your timetable.`;
+    }
+  }
+
+  return buildClassMismatchMessage(student?.curriculum_class_id, live);
 }
 
 async function buildClassMismatchMessage(studentCurriculumClassId, live) {
@@ -194,12 +219,6 @@ async function assertStudentCanAccessLiveClass(student, live, options = {}) {
     throw err;
   }
 
-  const userId = options.userId || student.user_id || null;
-  if (userId && live?.id && (await isStudentAdmittedToLobby(live.id, userId))) {
-    await ensureLiveClassLessonLink(live);
-    return { role: "student", studentId: student.id };
-  }
-
   const lessonId = live?.curriculum_class_timetable_lesson_id || (await ensureLiveClassLessonLink(live));
   if (!lessonId) {
     const err = new Error(
@@ -209,19 +228,12 @@ async function assertStudentCanAccessLiveClass(student, live, options = {}) {
     throw err;
   }
 
-  const audienceIds = audienceClassIdsFromLive(live);
-  const studentClassId = String(student.curriculum_class_id);
-
-  if (audienceIds.has(studentClassId)) {
-    return { role: "student", studentId: student.id };
-  }
-
-  const visibleOnTimetable = await isLessonVisibleToStudentClass(lessonId, student.curriculum_class_id);
+  const visibleOnTimetable = await isLessonVisibleToStudent(student, lessonId);
   if (visibleOnTimetable) {
     return { role: "student", studentId: student.id };
   }
 
-  const err = new Error(await buildClassMismatchMessage(student.curriculum_class_id, live));
+  const err = new Error(await buildAccessDeniedMessage(student, live));
   err.statusCode = 403;
   throw err;
 }
@@ -231,7 +243,7 @@ module.exports = {
   loadLiveClassForAccess,
   ensureLiveClassLessonLink,
   parseLessonIdFromMeetingId,
-  isLessonVisibleToStudentClass,
+  isLessonVisibleToStudent,
   audienceClassIdsFromLive,
   isStudentAdmittedToLobby,
   assertStudentCanAccessLiveClass,

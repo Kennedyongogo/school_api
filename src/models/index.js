@@ -67,6 +67,9 @@ const LiveClassChat = require("./liveClassChat")(sequelize);
 const LiveClassHandRaise = require("./liveClassHandRaise")(sequelize);
 const LiveClassReaction = require("./liveClassReaction")(sequelize);
 const LiveClassLobbyEntry = require("./liveClassLobbyEntry")(sequelize);
+const LiveClassWhiteboard = require("./liveClassWhiteboard")(sequelize);
+const LessonAttendanceRegister = require("./lessonAttendanceRegister")(sequelize);
+const LessonAttendanceRegisterEntry = require("./lessonAttendanceRegisterEntry")(sequelize);
 const ExamScheduleLobbyEntry = require("./examScheduleLobbyEntry")(sequelize);
 const InAppNotification = require("./inAppNotification")(sequelize);
 const SchoolProfile = require("./schoolProfile")(sequelize);
@@ -135,6 +138,9 @@ const models = {
   LiveClassHandRaise,
   LiveClassReaction,
   LiveClassLobbyEntry,
+  LiveClassWhiteboard,
+  LessonAttendanceRegister,
+  LessonAttendanceRegisterEntry,
   ExamScheduleLobbyEntry,
   InAppNotification,
   SchoolProfile,
@@ -145,6 +151,9 @@ const models = {
 
 const { ensureUnifiedExamSchema } = require("../utils/ensureUnifiedExamSchema");
 const { ensureLessonScheduleSchema } = require("../utils/ensureLessonScheduleSchema");
+const { ensureLessonAttendanceRegisterSchema } = require("../utils/ensureLessonAttendanceRegisterSchema");
+const { ensureLiveClassTimestampsSchema } = require("../utils/ensureLiveClassTimestampsSchema");
+const { ensureExamAnswerMarkerCommentSchema } = require("../utils/ensureExamAnswerMarkerCommentSchema");
 const { ensureReportCardSchema } = require("../utils/ensureReportCardSchema");
 const { ensureInAppNotificationSchema } = require("../utils/ensureInAppNotificationSchema");
 const { ensureFeeBillingSchema } = require("../utils/ensureFeeBillingSchema");
@@ -155,15 +164,18 @@ const initializeModels = async () => {
     console.log("🔄 Creating/updating school system tables...");
     await ensureUnifiedExamSchema();
     await ensureLessonScheduleSchema();
+    await ensureLessonAttendanceRegisterSchema();
+    await ensureLiveClassTimestampsSchema();
+    await ensureExamAnswerMarkerCommentSchema();
     await ensureReportCardSchema();
     await ensureInAppNotificationSchema();
     await ensureFeeBillingSchema();
     await ensureAuditTrailSchema();
     await ensureAdmissionApplicationSchema();
     await User.sync({ force: false, alter: false });
-    await GoogleMeetCredential.sync({ force: false, alter: true });
+    await GoogleMeetCredential.sync({ force: false, alter: false });
     await Teacher.sync({ force: false, alter: false });
-    await Student.sync({ force: false, alter: true });
+    await Student.sync({ force: false, alter: false });
     await Parent.sync({ force: false, alter: false });
     await SchoolAdmin.sync({ force: false, alter: false });
     await Department.sync({ force: false, alter: false });
@@ -178,7 +190,7 @@ const initializeModels = async () => {
     await AcademicTerm.sync({ force: false, alter: false });
     await SchoolProfile.sync({ force: false, alter: false });
     await ExamTemplate.sync({ force: false, alter: false });
-    await Exam.sync({ force: false, alter: true });
+    await Exam.sync({ force: false, alter: false });
     await ExamQuestion.sync({ force: false, alter: false });
     await ExamSubmission.sync({ force: false, alter: false });
     await ExamAnswer.sync({ force: false, alter: false });
@@ -219,6 +231,8 @@ const initializeModels = async () => {
     await LiveClassHandRaise.sync({ force: false, alter: false });
     await LiveClassReaction.sync({ force: false, alter: false });
     await LiveClassLobbyEntry.sync({ force: false, alter: false });
+    await LiveClassWhiteboard.sync({ force: false, alter: false });
+    // Tables + indexes come from ensureLessonAttendanceRegisterSchema (SQL); sync would duplicate indexes.
     await ExamScheduleLobbyEntry.sync({ force: false, alter: false });
     await AuditTrail.sync({ force: false, alter: false });
     console.log("✅ All models synced successfully");
@@ -805,6 +819,63 @@ const setupAssociations = () => {
       as: "timetable_lesson",
     });
 
+    CurriculumClassTimetableLesson.hasOne(LessonAttendanceRegister, {
+      foreignKey: "curriculum_class_timetable_lesson_id",
+      as: "attendance_register",
+    });
+    LessonAttendanceRegister.belongsTo(CurriculumClassTimetableLesson, {
+      foreignKey: "curriculum_class_timetable_lesson_id",
+      as: "lesson",
+    });
+    CurriculumClass.hasMany(LessonAttendanceRegister, {
+      foreignKey: "curriculum_class_id",
+      as: "lesson_attendance_registers",
+    });
+    LessonAttendanceRegister.belongsTo(CurriculumClass, {
+      foreignKey: "curriculum_class_id",
+      as: "curriculum_class",
+    });
+    LiveClass.hasMany(LessonAttendanceRegister, {
+      foreignKey: "live_class_id",
+      as: "attendance_registers",
+    });
+    LessonAttendanceRegister.belongsTo(LiveClass, {
+      foreignKey: "live_class_id",
+      as: "live_class",
+    });
+    User.hasMany(LessonAttendanceRegister, {
+      foreignKey: "hosted_by_user_id",
+      as: "hosted_lesson_attendance_registers",
+    });
+    LessonAttendanceRegister.belongsTo(User, {
+      foreignKey: "hosted_by_user_id",
+      as: "host",
+    });
+    LessonAttendanceRegister.belongsTo(User, {
+      foreignKey: "finalized_by_user_id",
+      as: "finalized_by",
+    });
+    LessonAttendanceRegister.hasMany(LessonAttendanceRegisterEntry, {
+      foreignKey: "register_id",
+      as: "entries",
+    });
+    LessonAttendanceRegisterEntry.belongsTo(LessonAttendanceRegister, {
+      foreignKey: "register_id",
+      as: "register",
+    });
+    Student.hasMany(LessonAttendanceRegisterEntry, {
+      foreignKey: "student_id",
+      as: "lesson_attendance_register_entries",
+    });
+    LessonAttendanceRegisterEntry.belongsTo(Student, {
+      foreignKey: "student_id",
+      as: "student",
+    });
+    LessonAttendanceRegisterEntry.belongsTo(User, {
+      foreignKey: "marked_by_user_id",
+      as: "marked_by",
+    });
+
     CurriculumSubject.hasMany(CurriculumSubjectTopic, {
       foreignKey: "curriculum_subject_id",
       as: "topics",
@@ -1079,6 +1150,15 @@ const setupAssociations = () => {
     LiveClassLobbyEntry.belongsTo(User, { foreignKey: "denied_by", as: "denied_by_user" });
     User.hasMany(LiveClassLobbyEntry, { foreignKey: "user_id", as: "live_class_lobby_entries" });
     Student.hasMany(LiveClassLobbyEntry, { foreignKey: "student_id", as: "live_class_lobby_entries" });
+
+    LiveClass.hasOne(LiveClassWhiteboard, {
+      foreignKey: "live_class_id",
+      as: "whiteboard",
+    });
+    LiveClassWhiteboard.belongsTo(LiveClass, {
+      foreignKey: "live_class_id",
+      as: "live_class",
+    });
 
     User.hasMany(AuditTrail, { foreignKey: "user_id", as: "audit_trails", onDelete: "SET NULL" });
     AuditTrail.belongsTo(User, { foreignKey: "user_id", as: "user" });

@@ -18,8 +18,10 @@ const {
 } = require("../models");
 const { STAFF_ROLES } = require("../constants/userRoles");
 const meetingProvider = require("../services/meetingProvider");
+const teamsService = require("../services/teamsService");
 const webrtcRoomService = require("../services/webrtcRoomService");
 const { isInAppVideoPlatform, defaultOnlineMeetingMode } = require("../utils/meetingPlatform");
+const { lessonSlotToDate } = require("../utils/examScheduleTime");
 
 const userSafe = { attributes: { exclude: ["password_hash"] } };
 
@@ -194,7 +196,7 @@ const dayViewLessonInclude = [
   {
     model: CurriculumClassTimetable,
     as: "timetable",
-    attributes: ["id", "name", "curriculum_class_id"],
+    attributes: ["id", "name", "curriculum_class_id", "curriculum_class_level_id"],
     include: [
       {
         model: CurriculumClass,
@@ -269,7 +271,7 @@ async function assertCanInitiateOnlineLive(req, lesson) {
   }
 }
 
-const { lessonSlotToDate } = require("../utils/examScheduleTime");
+const { studentWhereForLessonTimetable } = require("../utils/lessonTermRoster");
 
 function lessonWindowDates(lesson) {
   const timezone = lesson?.timezone || "Africa/Nairobi";
@@ -293,17 +295,57 @@ function normalizeMeetingPlatform(raw) {
   return "other";
 }
 
-/** Default online lesson meetings: LiveKit SFU (or webrtc mesh). Set ONLINE_MEETING_PLATFORM=jitsi for Jitsi. */
+function provisionInAppLesson(lesson, platform = "livekit") {
+  const p = webrtcRoomService.provisionForLesson(lesson.id, platform);
+  return {
+    meeting_id: p.meeting_id,
+    join_url: "",
+    host_url: "",
+    platform: p.platform,
+  };
+}
+
+function shouldFallbackTeamsToLiveKit(err) {
+  if (process.env.ONLINE_MEETING_TEAMS_FALLBACK_LIVEKIT === "0") return false;
+  if (err?.teamsAccessPolicyBlocked) return true;
+  const msg = String(err?.message || "");
+  return (
+    err?.statusCode === 503 ||
+    err?.statusCode === 502 ||
+    /application access policy/i.test(msg) ||
+    /Teams meeting creation failed/i.test(msg)
+  );
+}
+
+/** Default online lesson meetings: LiveKit SFU (or webrtc mesh). Set ONLINE_MEETING_PLATFORM=teams for Microsoft Teams. */
 async function tryProvisionMeetingForLesson(lesson) {
   const mode = defaultOnlineMeetingMode();
-  if (mode === "webrtc" || mode === "livekit") {
-    const p = webrtcRoomService.provisionForLesson(lesson.id, mode);
-    return {
-      meeting_id: p.meeting_id,
-      join_url: "",
-      host_url: "",
-      platform: p.platform,
+  if (mode === "teams") {
+    if (!teamsService.isConfigured()) {
+      console.warn("[Meeting] Teams not configured — using LiveKit for lesson", lesson?.id);
+      return provisionInAppLesson(lesson, "livekit");
+    }
+    const window = lessonWindowDates(lesson) || {
+      start_time: new Date(),
+      end_time: new Date(Date.now() + 3600000),
     };
+    const title = lesson.curriculum_subject?.name || "Online class";
+    try {
+      return await teamsService.createMeetingForLesson({
+        subject: title,
+        startDateTime: window.start_time,
+        endDateTime: window.end_time,
+      });
+    } catch (err) {
+      if (shouldFallbackTeamsToLiveKit(err)) {
+        console.warn("[Meeting] Teams failed, falling back to LiveKit:", err.message);
+        return provisionInAppLesson(lesson, "livekit");
+      }
+      throw err;
+    }
+  }
+  if (mode === "webrtc" || mode === "livekit") {
+    return provisionInAppLesson(lesson, mode);
   }
   if (process.env.JITSI_DISABLED === "1") {
     return null;
@@ -952,6 +994,9 @@ exports.initiateTimetableLessonLiveSession = async (req, res) => {
             session_status: "live",
           });
           await reusable.reload();
+        } else if (reusable.session_status === "scheduled") {
+          await reusable.update({ session_status: "live" });
+          await reusable.reload();
         }
         // Teacher has actively opened/initiated this online lesson session.
         if (!lesson.teacher_attended) {
@@ -975,7 +1020,7 @@ exports.initiateTimetableLessonLiveSession = async (req, res) => {
       return res.status(400).json({
         success: false,
         message:
-          "No meeting join URL available. Set ONLINE_MEETING_PLATFORM=livekit or webrtc for in-app rooms, or provide join_url in the request body.",
+          "No meeting join URL available. Set ONLINE_MEETING_PLATFORM=livekit, webrtc, or teams (with TEAMS_* env vars), or provide join_url in the request body.",
       });
     }
 
@@ -999,7 +1044,7 @@ exports.initiateTimetableLessonLiveSession = async (req, res) => {
       end_time: window.end_time,
       join_url: isInApp ? "" : urls.join_url,
       host_url: isInApp ? "" : urls.host_url || urls.join_url,
-      session_status: isInApp ? "live" : "scheduled",
+      session_status: "live",
       attendance_count: 0,
     });
 
@@ -1059,8 +1104,8 @@ exports.notifyOnlineLessonClass = async (req, res) => {
     await assertCanInitiateOnlineLive(req, lesson);
 
     const timetable = lesson?.timetable;
-    const ccId = timetable?.curriculum_class_id || timetable?.curriculum_class?.id;
-    if (!ccId) {
+    const studentWhere = studentWhereForLessonTimetable(timetable);
+    if (!studentWhere) {
       return res.status(400).json({ success: false, message: "Lesson has no curriculum class on timetable." });
     }
 
@@ -1093,7 +1138,7 @@ exports.notifyOnlineLessonClass = async (req, res) => {
     const lessonDate = lesson.lesson_date ? String(lesson.lesson_date) : "";
 
     const students = await Student.findAll({
-      where: { curriculum_class_id: ccId },
+      where: studentWhere,
       attributes: ["id", "user_id"],
     });
 

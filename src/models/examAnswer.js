@@ -31,6 +31,10 @@ module.exports = (sequelize) => {
         type: DataTypes.DECIMAL(5, 2),
         allowNull: true,
       },
+      marker_comment: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
     },
     {
       tableName: "exam_answers",

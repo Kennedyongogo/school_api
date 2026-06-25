@@ -9,7 +9,19 @@ const DEFAULT_SCHEDULE_TIMEZONE = "Africa/Nairobi";
 
 function normalizeTimeToHms(timeValue) {
   if (timeValue == null || String(timeValue).trim() === "") return "00:00:00";
+  if (timeValue instanceof Date && !Number.isNaN(timeValue.getTime())) {
+    const h = String(timeValue.getUTCHours()).padStart(2, "0");
+    const m = String(timeValue.getUTCMinutes()).padStart(2, "0");
+    const sec = String(timeValue.getUTCSeconds()).padStart(2, "0");
+    return `${h}:${m}:${sec}`;
+  }
   let s = String(timeValue).trim();
+  const isoTime = s.match(/T(\d{2}:\d{2}:\d{2})/);
+  if (isoTime) return isoTime[1];
+  if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(s)) {
+    if (s.length === 5) s = `${s}:00`;
+    return s.slice(0, 8);
+  }
   if (s.length === 5) s = `${s}:00`;
   return s.slice(0, 8);
 }

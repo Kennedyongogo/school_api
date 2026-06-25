@@ -2,13 +2,15 @@ const {
   LiveClass,
   CurriculumClassTimetableLesson,
   CurriculumClassTimetable,
+  CurriculumClass,
   CurriculumSubject,
   Teacher,
   User,
 } = require("../models");
 const webrtcRoomService = require("../services/webrtcRoomService");
+const teamsService = require("../services/teamsService");
 const { getLiveKitUrl, isConfigured: liveKitConfigured } = require("../services/livekitService");
-const { isInAppVideoPlatform } = require("../utils/meetingPlatform");
+const { isInAppVideoPlatform, isTeamsPlatform } = require("../utils/meetingPlatform");
 const { ADMIN_PORTAL_API_ROLES } = require("../constants/userRoles");
 const { assertCanAccessLiveClass, ensureLiveClassLessonLink } = require("../services/liveClassAccess");
 const { getLessonJoinWindow } = require("../utils/lessonJoinWindow");
@@ -43,6 +45,14 @@ exports.getLiveClassRoom = async (req, res) => {
               as: "timetable",
               required: false,
               attributes: ["id", "curriculum_class_id"],
+              include: [
+                {
+                  model: CurriculumClass,
+                  as: "curriculum_class",
+                  required: false,
+                  attributes: ["id", "name", "code"],
+                },
+              ],
             },
             { model: CurriculumSubject, as: "curriculum_subject", attributes: ["id", "name"] },
           ],
@@ -61,6 +71,10 @@ exports.getLiveClassRoom = async (req, res) => {
     await assertCanAccessLiveClass(req, live);
 
     const subjectName = live.timetable_lesson?.curriculum_subject?.name || "Online class";
+    const cc = live.timetable_lesson?.timetable?.curriculum_class;
+    const curriculumClassLabel = cc
+      ? `${cc.name || ""}${cc.code ? ` (${cc.code})` : ""}`.trim()
+      : "";
     const role = req.user.role === "student" ? "student" : ADMIN_PORTAL_API_ROLES.includes(req.user.role) ? "teacher" : "participant";
     const isStaff = ADMIN_PORTAL_API_ROLES.includes(req.user.role);
     const joinWindow = getLessonJoinWindow({
@@ -70,6 +84,7 @@ exports.getLiveClassRoom = async (req, res) => {
       timezone: live.timetable_lesson?.timezone,
       session_status: live.session_status,
       is_staff: isStaff,
+      live_end_time: live.end_time,
     });
 
     if (req.user.role === "student" && !joinWindow.can_join) {
@@ -88,7 +103,12 @@ exports.getLiveClassRoom = async (req, res) => {
         platform: live.platform,
         session_status: live.session_status,
         subject_name: subjectName,
+        lesson_id: live.curriculum_class_timetable_lesson_id || null,
         lesson_date: live.timetable_lesson?.lesson_date || null,
+        curriculum_class_id: cc?.id || live.timetable_lesson?.timetable?.curriculum_class_id || null,
+        curriculum_class_label: curriculumClassLabel || null,
+        host_name:
+          live.host?.user?.full_name || live.host?.user?.username || req.user?.full_name || req.user?.username || null,
         starts_at: live.timetable_lesson?.starts_at || null,
         ends_at: live.timetable_lesson?.ends_at || null,
         timezone: live.timetable_lesson?.timezone || "Africa/Nairobi",
@@ -106,6 +126,9 @@ exports.getLiveClassRoom = async (req, res) => {
             : "optional",
         role,
         join_path: webrtcRoomService.portalLiveClassPath(live.id),
+        join_url: !isInAppVideoPlatform(live.platform) ? live.join_url || null : null,
+        host_url: !isInAppVideoPlatform(live.platform) ? live.host_url || live.join_url || null : null,
+        teams_configured: isTeamsPlatform(live.platform) ? teamsService.isConfigured() : undefined,
       },
     });
   } catch (error) {

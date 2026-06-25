@@ -6,6 +6,14 @@
 const { DEFAULT_SCHEDULE_TIMEZONE, lessonSlotToDate } = require("./examScheduleTime");
 
 const EARLY_JOIN_MINUTES = 15;
+/** Extra minutes after scheduled end when a live session row exists (teacher started the class). */
+const LIVE_SESSION_GRACE_MINUTES = 60;
+
+function parseOptionalDate(value) {
+  if (value == null || value === "") return null;
+  const d = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
 
 /**
  * @returns {{ can_join: boolean, reason: string|null, opens_at: string|null, closes_at: string|null }}
@@ -18,6 +26,7 @@ function getLessonJoinWindow({
   timezone = DEFAULT_SCHEDULE_TIMEZONE,
   is_staff = false,
   early_minutes = EARLY_JOIN_MINUTES,
+  live_end_time = null,
 }) {
   if (is_staff) {
     return { can_join: true, reason: null, opens_at: null, closes_at: null };
@@ -58,12 +67,31 @@ function getLessonJoinWindow({
     };
   }
 
-  if (now > end) {
+  // Teacher has an active live session — students may join until the teacher ends it.
+  if (session_status === "live") {
+    return {
+      can_join: true,
+      reason: null,
+      opens_at: opensAt.toISOString(),
+      closes_at: null,
+    };
+  }
+
+  let closesAt = end;
+  const liveEnd = parseOptionalDate(live_end_time);
+  if (liveEnd && liveEnd.getTime() > closesAt.getTime()) {
+    closesAt = liveEnd;
+  }
+  if (session_status === "scheduled" && liveEnd) {
+    closesAt = new Date(closesAt.getTime() + LIVE_SESSION_GRACE_MINUTES * 60 * 1000);
+  }
+
+  if (now > closesAt) {
     return {
       can_join: false,
       reason: "This class time has passed. The join button is no longer available.",
       opens_at: opensAt.toISOString(),
-      closes_at: end.toISOString(),
+      closes_at: closesAt.toISOString(),
     };
   }
 
@@ -71,7 +99,7 @@ function getLessonJoinWindow({
     can_join: true,
     reason: null,
     opens_at: opensAt.toISOString(),
-    closes_at: end.toISOString(),
+    closes_at: closesAt.toISOString(),
   };
 }
 
@@ -87,6 +115,7 @@ function assertStudentCanJoinLessonWindow(params) {
 
 module.exports = {
   EARLY_JOIN_MINUTES,
+  LIVE_SESSION_GRACE_MINUTES,
   getLessonJoinWindow,
   assertStudentCanJoinLessonWindow,
 };

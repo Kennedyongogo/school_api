@@ -35,10 +35,12 @@ async function createParticipantToken({ roomName, identity, name, role = "partic
 
   const normalizedRole = String(role || "participant").toLowerCase();
   const isRoomAdmin = normalizedRole === "host" || normalizedRole === "teacher";
+  const classroomRole = isRoomAdmin ? "teacher" : "student";
   const at = new AccessToken(process.env.LIVEKIT_API_KEY, process.env.LIVEKIT_API_SECRET, {
     identity: String(identity),
     name: name ? String(name) : String(identity),
     ttl: 4 * 60 * 60,
+    metadata: JSON.stringify({ classroomRole }),
   });
 
   at.addGrant({

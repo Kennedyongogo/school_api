@@ -27,6 +27,8 @@ function parseHrAttendanceQuery(req) {
   const curriculumClassId =
     req.query.curriculum_class_id != null ? String(req.query.curriculum_class_id).trim() : "";
   const search = req.query.search != null ? String(req.query.search).trim() : "";
+  const audienceRaw = req.query.audience != null ? String(req.query.audience).trim().toLowerCase() : "all";
+  const audience = audienceRaw === "teachers" || audienceRaw === "students" ? audienceRaw : "all";
 
   if (hasDateFilter && !/^\d{4}-\d{2}-\d{2}$/.test(dateRaw)) {
     return { error: "date must be YYYY-MM-DD" };
@@ -41,6 +43,9 @@ function parseHrAttendanceQuery(req) {
     hasCurriculumFilter: Boolean(curriculumId || curriculumClassId),
     search,
     hasSearch: Boolean(search),
+    audience,
+    includeTeachers: audience !== "students",
+    includeStudents: audience !== "teachers",
   };
 }
 
@@ -160,16 +165,29 @@ exports.getHrAttendanceOverview = async (req, res) => {
       return res.status(400).json({ success: false, message: parsed.error });
     }
 
-    const { dateRaw, scope, hasDateFilter, curriculumId, curriculumClassId, hasCurriculumFilter, search, hasSearch } =
-      parsed;
+    const {
+      dateRaw,
+      scope,
+      hasDateFilter,
+      curriculumId,
+      curriculumClassId,
+      hasCurriculumFilter,
+      search,
+      hasSearch,
+      audience,
+      includeTeachers,
+      includeStudents,
+    } = parsed;
 
     let teacherIdsForSearch = null;
     let studentIdsForSearch = null;
     if (hasSearch) {
-      [teacherIdsForSearch, studentIdsForSearch] = await Promise.all([
-        findTeacherIdsForSearch(search),
-        findStudentIdsForSearch(search),
-      ]);
+      const lookups = [];
+      if (includeTeachers) lookups.push(findTeacherIdsForSearch(search));
+      else lookups.push(Promise.resolve([]));
+      if (includeStudents) lookups.push(findStudentIdsForSearch(search));
+      else lookups.push(Promise.resolve([]));
+      [teacherIdsForSearch, studentIdsForSearch] = await Promise.all(lookups);
     }
 
     if (scope === "exams") {
@@ -185,6 +203,7 @@ exports.getHrAttendanceOverview = async (req, res) => {
           success: true,
           data: {
             scope,
+            audience,
             date: hasDateFilter ? dateRaw : null,
             date_filtered: hasDateFilter,
             curriculum_id: curriculumId || null,
@@ -197,25 +216,27 @@ exports.getHrAttendanceOverview = async (req, res) => {
         });
       }
 
-      const teacherExamWhere = { ...examWhere };
-      if (hasSearch && teacherIdsForSearch.length) {
-        teacherExamWhere.teacher_id = { [Op.in]: teacherIdsForSearch };
-      } else if (hasSearch) {
-        teacherExamWhere.teacher_id = null;
-      }
-
-      const teacherRows = hasSearch && !teacherIdsForSearch.length
-        ? []
-        : await Exam.findAll({
-            where: teacherExamWhere,
-            include: [
-              { model: Curriculum, as: "curriculum", attributes: ["id", "name"] },
-              { model: CurriculumClass, as: "curriculum_class", attributes: ["id", "name", "code"] },
-              { model: CurriculumClassLevel, as: "curriculum_class_level", attributes: ["id", "name"] },
-              teacherInclude(),
-            ],
-            order: [["start_time", "DESC"]],
-          });
+      const teacherRows =
+        !includeTeachers || (hasSearch && !teacherIdsForSearch.length)
+          ? []
+          : await Exam.findAll({
+              where: (() => {
+                const teacherExamWhere = { ...examWhere };
+                if (hasSearch && teacherIdsForSearch.length) {
+                  teacherExamWhere.teacher_id = { [Op.in]: teacherIdsForSearch };
+                } else if (hasSearch) {
+                  teacherExamWhere.teacher_id = null;
+                }
+                return teacherExamWhere;
+              })(),
+              include: [
+                { model: Curriculum, as: "curriculum", attributes: ["id", "name"] },
+                { model: CurriculumClass, as: "curriculum_class", attributes: ["id", "name", "code"] },
+                { model: CurriculumClassLevel, as: "curriculum_class_level", attributes: ["id", "name"] },
+                teacherInclude(),
+              ],
+              order: [["start_time", "DESC"]],
+            });
 
       const attemptWhere = {};
       if (hasSearch) {
@@ -224,6 +245,7 @@ exports.getHrAttendanceOverview = async (req, res) => {
             success: true,
             data: {
               scope,
+              audience,
               date: hasDateFilter ? dateRaw : null,
               date_filtered: hasDateFilter,
               curriculum_id: curriculumId || null,
@@ -251,7 +273,10 @@ exports.getHrAttendanceOverview = async (req, res) => {
         attemptWhere.student_id = { [Op.in]: studentIdsForSearch };
       }
 
-      const attempts = await ExamAttempt.findAll({
+      const attempts =
+        !includeStudents || (hasSearch && !studentIdsForSearch.length)
+          ? []
+          : await ExamAttempt.findAll({
         where: Object.keys(attemptWhere).length ? attemptWhere : undefined,
         include: [
           {
@@ -266,7 +291,10 @@ exports.getHrAttendanceOverview = async (req, res) => {
         order: [["created_at", "DESC"]],
       });
 
-      const submissions = await ExamSubmission.findAll({
+      const submissions =
+        !includeStudents
+          ? []
+          : await ExamSubmission.findAll({
         where: hasDateFilter
           ? {
               created_at: {
@@ -297,6 +325,7 @@ exports.getHrAttendanceOverview = async (req, res) => {
         success: true,
         data: {
           scope,
+          audience,
           date: hasDateFilter ? dateRaw : null,
           date_filtered: hasDateFilter,
           curriculum_id: curriculumId || null,
@@ -339,6 +368,7 @@ exports.getHrAttendanceOverview = async (req, res) => {
         success: true,
         data: {
           scope,
+          audience,
           date: hasDateFilter ? dateRaw : null,
           date_filtered: hasDateFilter,
           curriculum_id: curriculumId || null,
@@ -357,7 +387,7 @@ exports.getHrAttendanceOverview = async (req, res) => {
     }
 
     const teacherRows =
-      hasSearch && !teacherIdsForSearch.length
+      !includeTeachers || (hasSearch && !teacherIdsForSearch.length)
         ? []
         : await CurriculumClassTimetableLesson.findAll({
             where: lessonWhere,
@@ -384,7 +414,7 @@ exports.getHrAttendanceOverview = async (req, res) => {
     }
 
     const studentRows =
-      hasSearch && !studentIdsForSearch.length
+      !includeStudents || (hasSearch && !studentIdsForSearch.length)
         ? []
         : await LiveClassAttendance.findAll({
             where: Object.keys(attendanceWhere).length ? attendanceWhere : undefined,
@@ -423,6 +453,7 @@ exports.getHrAttendanceOverview = async (req, res) => {
       success: true,
       data: {
         scope,
+        audience,
         date: hasDateFilter ? dateRaw : null,
         date_filtered: hasDateFilter,
         curriculum_id: curriculumId || null,

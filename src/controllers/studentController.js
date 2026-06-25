@@ -32,7 +32,7 @@ const studentListIncludes = [
   {
     model: CurriculumClassLevel,
     as: "curriculum_class_level",
-    attributes: ["id", "name", "level_order", "curriculum_class_id"],
+    attributes: ["id", "name", "level_order", "curriculum_class_id", "start_date", "end_date"],
     required: false,
   },
 ];

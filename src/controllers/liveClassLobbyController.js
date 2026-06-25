@@ -21,7 +21,7 @@ const { assertStudentCanJoinLessonWindow } = require("../utils/lessonJoinWindow"
 async function getStudentForUser(userId) {
   return Student.findOne({
     where: { user_id: userId },
-    attributes: ["id", "user_id", "curriculum_class_id"],
+    attributes: ["id", "user_id", "curriculum_class_id", "curriculum_class_level_id"],
   });
 }
 
@@ -33,6 +33,7 @@ async function assertLessonOpenForStudent(live) {
     ends_at: lesson?.ends_at,
     timezone: lesson?.timezone,
     session_status: live?.session_status,
+    live_end_time: live?.end_time,
   });
 }
 

@@ -31,6 +31,12 @@ const {
   createTimetableLessonLiveRecording,
 } = require("../controllers/curriculumClassTimetableController");
 const {
+  getLessonAttendanceRegister,
+  saveLessonAttendanceRegister,
+  finalizeLessonAttendanceRegister,
+  downloadLessonAttendanceRegisterPdf,
+} = require("../controllers/lessonAttendanceRegisterController");
+const {
   listAllCurriculumClasses,
   listAllCurriculumClassLevels,
   listAllCurriculumSubjects,
@@ -120,6 +126,30 @@ router.post(
   authenticateUser,
   authorizeRoles(TEACH_OR_STAFF),
   createTimetableLessonLiveRecording
+);
+router.get(
+  "/timetable-lessons/:lessonId/attendance-register/pdf",
+  authenticateUser,
+  authorizeRoles(TEACH_OR_STAFF),
+  downloadLessonAttendanceRegisterPdf
+);
+router.get(
+  "/timetable-lessons/:lessonId/attendance-register",
+  authenticateUser,
+  authorizeRoles(TEACH_OR_STAFF),
+  getLessonAttendanceRegister
+);
+router.put(
+  "/timetable-lessons/:lessonId/attendance-register",
+  authenticateUser,
+  authorizeRoles(TEACH_OR_STAFF),
+  saveLessonAttendanceRegister
+);
+router.post(
+  "/timetable-lessons/:lessonId/attendance-register/finalize",
+  authenticateUser,
+  authorizeRoles(TEACH_OR_STAFF),
+  finalizeLessonAttendanceRegister
 );
 
 router.get(

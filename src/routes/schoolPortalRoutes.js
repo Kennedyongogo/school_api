@@ -24,6 +24,11 @@ const {
   postLiveClassReaction,
 } = require("../controllers/liveClassInteractionController");
 const {
+  getLiveClassWhiteboard,
+  postLiveClassWhiteboardStroke,
+  clearLiveClassWhiteboard,
+} = require("../controllers/liveClassWhiteboardController");
+const {
   getLiveClassLobby,
   getMyLobbyStatus,
   requestLobbyJoin,
@@ -36,6 +41,8 @@ const {
   listMyStudentTimetableLessons,
   listMyStudentExamSchedules,
   getMyStudentExamResult,
+  streamMyStudentExamResultPdf,
+  streamMyStudentExamAnsweredPdf,
 } = require("../controllers/schoolPortalTimetableController");
 const {
   listMyStudentReportCards,
@@ -71,6 +78,9 @@ router.post("/live-class/:id/hand/raise", authenticateUser, raiseHand);
 router.post("/live-class/:id/hand/lower", authenticateUser, lowerHand);
 router.post("/live-class/:id/hand/:handId/dismiss", authenticateUser, dismissHand);
 router.post("/live-class/:id/reaction", authenticateUser, postLiveClassReaction);
+router.get("/live-class/:id/whiteboard", authenticateUser, getLiveClassWhiteboard);
+router.post("/live-class/:id/whiteboard/strokes", authenticateUser, postLiveClassWhiteboardStroke);
+router.delete("/live-class/:id/whiteboard", authenticateUser, clearLiveClassWhiteboard);
 router.get("/live-class/:id/lobby", authenticateUser, getLiveClassLobby);
 router.get("/live-class/:id/lobby/me", authenticateUser, getMyLobbyStatus);
 router.post("/live-class/:id/lobby/join", authenticateUser, requestLobbyJoin);
@@ -83,6 +93,10 @@ router.get("/student/exams", authenticateUser, authorizeRoles(["student"]), list
 router.get("/student/exam-schedules", authenticateUser, authorizeRoles(["student"]), listMyStudentExamSchedules);
 router.get("/student/exam-results/:examScheduleId", authenticateUser, authorizeRoles(["student"]), getMyStudentExamResult);
 router.get("/student/exam-results/exam/:examId", authenticateUser, authorizeRoles(["student"]), getMyStudentExamResult);
+router.get("/student/exam-results/:examScheduleId/pdf", authenticateUser, authorizeRoles(["student"]), streamMyStudentExamResultPdf);
+router.get("/student/exam-results/exam/:examId/pdf", authenticateUser, authorizeRoles(["student"]), streamMyStudentExamResultPdf);
+router.get("/student/exam-results/:examScheduleId/answered-pdf", authenticateUser, authorizeRoles(["student"]), streamMyStudentExamAnsweredPdf);
+router.get("/student/exam-results/exam/:examId/answered-pdf", authenticateUser, authorizeRoles(["student"]), streamMyStudentExamAnsweredPdf);
 router.get("/student/report-cards", authenticateUser, authorizeRoles(["student"]), listMyStudentReportCards);
 router.get("/student/report-cards/:id/pdf", authenticateUser, authorizeRoles(["student"]), streamMyStudentReportCardPdf);
 router.get("/student/report-cards/:id", authenticateUser, authorizeRoles(["student"]), getMyStudentReportCard);

@@ -33,6 +33,11 @@ async function resolveSubjectBand({ curriculum_id, curriculum_class_id, curricul
   });
 }
 
+function missingGradingBandMessage({ subjectName, marks }) {
+  const label = subjectName ? `"${subjectName}"` : "this subject";
+  return `No active grading scale covers ${marks} marks for ${label}. Add a subject grading band that includes this score (Curriculum → Grading system), then grade again.`;
+}
+
 exports.bulkUpsertExamResults = async (req, res) => {
   try {
     const exam = await Exam.findByPk(req.params.examId);
@@ -49,7 +54,9 @@ exports.bulkUpsertExamResults = async (req, res) => {
 
       const student = await Student.findByPk(student_id, { attributes: ["id"] });
       if (!student) continue;
-      const cs = await CurriculumSubject.findByPk(curriculum_subject_id, { attributes: ["id", "subject_id", "curriculum_id", "curriculum_class_id"] });
+      const cs = await CurriculumSubject.findByPk(curriculum_subject_id, {
+        attributes: ["id", "name", "subject_id", "curriculum_id", "curriculum_class_id"],
+      });
       if (!cs) continue;
 
       const curriculum_id = exam.curriculum_id || cs.curriculum_id;
@@ -62,6 +69,12 @@ exports.bulkUpsertExamResults = async (req, res) => {
         curriculum_subject_id,
         marks,
       });
+      if (!band) {
+        return res.status(400).json({
+          success: false,
+          message: missingGradingBandMessage({ subjectName: cs.name, marks }),
+        });
+      }
 
       const payload = {
         student_id,
@@ -120,7 +133,7 @@ exports.gradeExamSubmission = async (req, res) => {
       return res.status(400).json({ success: false, message: "Exam must be linked to a curriculum subject." });
     }
     const cs = await CurriculumSubject.findByPk(curriculum_subject_id, {
-      attributes: ["id", "subject_id", "curriculum_id", "curriculum_class_id"],
+      attributes: ["id", "name", "subject_id", "curriculum_id", "curriculum_class_id"],
     });
     if (!cs) return res.status(400).json({ success: false, message: "Curriculum subject not found." });
 
@@ -130,19 +143,26 @@ exports.gradeExamSubmission = async (req, res) => {
       return res.status(400).json({ success: false, message: "Curriculum and class are required." });
     }
 
+    const marks = Number(totalScore);
     const band = await resolveSubjectBand({
       curriculum_id,
       curriculum_class_id,
       curriculum_subject_id,
-      marks: Number(totalScore),
+      marks,
     });
+    if (!band) {
+      return res.status(400).json({
+        success: false,
+        message: missingGradingBandMessage({ subjectName: cs.name, marks }),
+      });
+    }
 
     const payload = {
       student_id: submission.student_id,
       exam_id: exam.id,
       curriculum_subject_id,
-      marks_obtained: Number(totalScore),
-      marks: Number(totalScore),
+      marks_obtained: marks,
+      marks,
       ...gradeFieldsFromBand(band),
       graded_at: new Date(),
       graded_by: req.user?.id || null,
@@ -173,7 +193,9 @@ exports.updateExamResultMarks = async (req, res) => {
     }
     const marks = Number(req.body?.marks);
     if (!Number.isFinite(marks)) return res.status(400).json({ success: false, message: "marks must be a valid number." });
-    const cs = await CurriculumSubject.findByPk(row.curriculum_subject_id || req.body?.curriculum_subject_id);
+    const cs = await CurriculumSubject.findByPk(row.curriculum_subject_id || req.body?.curriculum_subject_id, {
+      attributes: ["id", "name", "curriculum_id", "curriculum_class_id"],
+    });
     if (!cs) return res.status(400).json({ success: false, message: "curriculum_subject_id is required." });
 
     const curriculum_id = exam.curriculum_id || cs.curriculum_id;
@@ -184,6 +206,12 @@ exports.updateExamResultMarks = async (req, res) => {
       curriculum_subject_id: cs.id,
       marks,
     });
+    if (!band) {
+      return res.status(400).json({
+        success: false,
+        message: missingGradingBandMessage({ subjectName: cs.name, marks }),
+      });
+    }
     await row.update({
       curriculum_subject_id: cs.id,
       marks_obtained: marks,

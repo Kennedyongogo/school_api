@@ -25,7 +25,7 @@ async function assertCanAccessLiveClass(req, live) {
 
   const student = await Student.findOne({
     where: { user_id: req.user.id },
-    attributes: ["id", "user_id", "curriculum_class_id", "curriculum_id"],
+    attributes: ["id", "user_id", "curriculum_class_id", "curriculum_class_level_id", "curriculum_id"],
   });
 
   return assertStudentCanAccessLiveClass(student, live, { userId: req.user.id });

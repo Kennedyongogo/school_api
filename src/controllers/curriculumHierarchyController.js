@@ -6,6 +6,7 @@ const {
   CurriculumSubjectTopic,
   CurriculumSubjectSubtopic,
 } = require("../models");
+const { Op } = require("sequelize");
 const { serializeTopicWithSubtopics } = require("../utils/curriculumTopicTree");
 
 /** Default eager-load graph for curriculum subject API responses */
@@ -29,6 +30,40 @@ const topicSubtopicsInclude = {
     ["name", "ASC"],
   ],
 };
+
+function parseOptionalDateOnly(value) {
+  if (value === undefined) return { provided: false };
+  if (value === null || value === "") return { provided: true, value: null };
+  const s = String(value).trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    return { provided: true, error: "Dates must use YYYY-MM-DD format" };
+  }
+  return { provided: true, value: s };
+}
+
+function assertValidTermDateRange(startDate, endDate) {
+  if (startDate && endDate && startDate > endDate) {
+    return "start_date cannot be after end_date";
+  }
+  return null;
+}
+
+function applyTermDateFields(payload, body) {
+  const start = parseOptionalDateOnly(body.start_date);
+  if (start.error) return { error: start.error };
+  if (start.provided) payload.start_date = start.value;
+
+  const end = parseOptionalDateOnly(body.end_date);
+  if (end.error) return { error: end.error };
+  if (end.provided) payload.end_date = end.value;
+
+  const rangeError = assertValidTermDateRange(
+    start.provided ? start.value : payload.start_date,
+    end.provided ? end.value : payload.end_date
+  );
+  if (rangeError) return { error: rangeError };
+  return { payload };
+}
 
 /**
  * When a subject is tied to a term (class level), ensure the level belongs to this curriculum
@@ -288,6 +323,28 @@ exports.listAllCurriculumClassLevels = async (req, res) => {
     const classIdFilter = req.query.curriculum_class_id != null ? String(req.query.curriculum_class_id).trim() : "";
     if (classIdFilter) whereLevel.curriculum_class_id = classIdFilter;
 
+    const q = req.query.q != null ? String(req.query.q).trim() : "";
+    if (q) whereLevel.name = { [Op.iLike]: `%${q}%` };
+
+    const termName = req.query.term_name != null ? String(req.query.term_name).trim() : "";
+    if (termName) whereLevel.name = { [Op.iLike]: termName };
+
+    const startFrom = req.query.start_date_from != null ? String(req.query.start_date_from).trim() : "";
+    const startTo = req.query.start_date_to != null ? String(req.query.start_date_to).trim() : "";
+    if (startFrom || startTo) {
+      whereLevel.start_date = {};
+      if (startFrom) whereLevel.start_date[Op.gte] = startFrom;
+      if (startTo) whereLevel.start_date[Op.lte] = startTo;
+    }
+
+    const endFrom = req.query.end_date_from != null ? String(req.query.end_date_from).trim() : "";
+    const endTo = req.query.end_date_to != null ? String(req.query.end_date_to).trim() : "";
+    if (endFrom || endTo) {
+      whereLevel.end_date = {};
+      if (endFrom) whereLevel.end_date[Op.gte] = endFrom;
+      if (endTo) whereLevel.end_date[Op.lte] = endTo;
+    }
+
     const curriculumIdFilter = req.query.curriculum_id != null ? String(req.query.curriculum_id).trim() : "";
     const classWhere = {};
     if (curriculumIdFilter) classWhere.curriculum_id = curriculumIdFilter;
@@ -368,6 +425,10 @@ exports.createCurriculumClassLevel = async (req, res) => {
       const d = req.body.description != null ? String(req.body.description).trim() : "";
       payload.description = d === "" ? null : d;
     }
+    const dates = applyTermDateFields(payload, req.body);
+    if (dates.error) {
+      return res.status(400).json({ success: false, message: dates.error });
+    }
     const row = await CurriculumClassLevel.create(payload);
     return res.status(201).json({ success: true, data: row });
   } catch (error) {
@@ -409,8 +470,42 @@ exports.updateCurriculumClassLevel = async (req, res) => {
       const d = req.body.description != null ? String(req.body.description).trim() : "";
       patch.description = d === "" ? null : d;
     }
+    const dates = applyTermDateFields(patch, req.body);
+    if (dates.error) {
+      return res.status(400).json({ success: false, message: dates.error });
+    }
+    const nextStart = patch.start_date !== undefined ? patch.start_date : row.start_date;
+    const nextEnd = patch.end_date !== undefined ? patch.end_date : row.end_date;
+    const rangeError = assertValidTermDateRange(nextStart, nextEnd);
+    if (rangeError) {
+      return res.status(400).json({ success: false, message: rangeError });
+    }
+    if (req.body.curriculum_class_id !== undefined) {
+      const newClassId = req.body.curriculum_class_id != null ? String(req.body.curriculum_class_id).trim() : "";
+      if (!newClassId) {
+        return res.status(400).json({ success: false, message: "curriculum_class_id is required" });
+      }
+      const newClass = await CurriculumClass.findOne({
+        where: { id: newClassId },
+        attributes: ["id", "curriculum_id"],
+      });
+      if (!newClass) {
+        return res.status(400).json({ success: false, message: "Class not found" });
+      }
+      patch.curriculum_class_id = newClassId;
+    }
     await row.update(patch);
-    return res.json({ success: true, data: row });
+    const updated = await CurriculumClassLevel.findByPk(row.id, {
+      include: [
+        {
+          model: CurriculumClass,
+          as: "curriculum_class",
+          attributes: ["id", "name", "code", "curriculum_id"],
+          include: [{ model: Curriculum, as: "curriculum", attributes: ["id", "name", "type"] }],
+        },
+      ],
+    });
+    return res.json({ success: true, data: updated });
   } catch (error) {
     return handleErr(res, error);
   }
