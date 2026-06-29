@@ -213,41 +213,73 @@ exports.listMyStudentExamSchedules = async (req, res) => {
     if (!student) {
       return res.status(404).json({ success: false, message: "Student profile not found." });
     }
-    if (!student.curriculum_class_id) {
+
+    const studentSubmissions = await ExamSubmission.findAll({
+      where: { student_id: student.id },
+      attributes: ["id", "exam_id", "status", "started_at", "submitted_at"],
+      order: [["created_at", "DESC"]],
+    });
+    const submissionExamIds = [
+      ...new Set(
+        studentSubmissions
+          .filter((s) => s.status === "submitted" || s.submitted_at)
+          .map((s) => s.exam_id)
+          .filter(Boolean)
+      ),
+    ];
+
+    if (!student.curriculum_class_id && !submissionExamIds.length) {
       return res.json({ success: true, data: [] });
     }
 
-    const where = {
-      is_active: true,
-      curriculum_class_id: student.curriculum_class_id,
-      status: "published",
-      session_status: { [Op.in]: ["scheduled", "live", "completed"] },
-    };
-    if (student.curriculum_id) where.curriculum_id = student.curriculum_id;
-    if (student.curriculum_class_level_id) {
-      where.curriculum_class_level_id = student.curriculum_class_level_id;
+    const examInclude = [
+      { model: Curriculum, as: "curriculum", attributes: ["id", "name", "type"] },
+      { model: CurriculumClass, as: "curriculum_class", attributes: ["id", "name", "code"] },
+      { model: CurriculumClassLevel, as: "curriculum_class_level", attributes: ["id", "name"] },
+      {
+        model: Teacher,
+        as: "teacher",
+        required: false,
+        attributes: ["id"],
+        include: [{ model: User, as: "user", ...userSafe }],
+      },
+    ];
+
+    let assignedRows = [];
+    if (student.curriculum_class_id) {
+      const where = {
+        is_active: true,
+        curriculum_class_id: student.curriculum_class_id,
+        status: "published",
+        session_status: { [Op.in]: ["scheduled", "live", "completed"] },
+      };
+      if (student.curriculum_id) where.curriculum_id = student.curriculum_id;
+      if (student.curriculum_class_level_id) {
+        where.curriculum_class_level_id = student.curriculum_class_level_id;
+      }
+
+      const rows = await Exam.findAll({
+        where,
+        include: examInclude,
+      });
+      assignedRows = rows.filter((r) => isStudentAssignedToExam(r, student.id));
     }
 
-    const rows = await Exam.findAll({
-      where,
-      include: [
-        { model: Curriculum, as: "curriculum", attributes: ["id", "name", "type"] },
-        { model: CurriculumClass, as: "curriculum_class", attributes: ["id", "name", "code"] },
-        { model: CurriculumClassLevel, as: "curriculum_class_level", attributes: ["id", "name"] },
-        {
-          model: Teacher,
-          as: "teacher",
-          required: false,
-          attributes: ["id"],
-          include: [{ model: User, as: "user", ...userSafe }],
-        },
-      ],
-      // Sort in JS after fetch — ORDER BY created_at/start_time here is ambiguous when includes join other tables.
-    });
+    const assignedExamIds = new Set(assignedRows.map((r) => String(r.id)));
+    const retainedExamIds = submissionExamIds.filter((id) => !assignedExamIds.has(String(id)));
+    const retainedRows = retainedExamIds.length
+      ? await Exam.findAll({
+          where: { id: { [Op.in]: retainedExamIds } },
+          include: examInclude,
+        })
+      : [];
 
-    const assignedRows = rows.filter((r) => isStudentAssignedToExam(r, student.id));
+    const mergedRows = [...assignedRows];
+    for (const row of retainedRows) {
+      if (!assignedExamIds.has(String(row.id))) mergedRows.push(row);
+    }
 
-    const examIds = assignedRows.map((r) => r.id);
+    const examIds = mergedRows.map((r) => r.id);
     const [attempts, submissions] = await Promise.all([
       examIds.length
         ? ExamAttempt.findAll({
@@ -280,10 +312,18 @@ exports.listMyStudentExamSchedules = async (req, res) => {
     }
 
     const data = await Promise.all(
-      assignedRows.map(async (r) => {
+      mergedRows.map(async (r) => {
+      const isAssigned = isStudentAssignedToExam(r, student.id);
       const att = attemptByExam.get(r.id);
       const sub = submissionByExam.get(r.id);
       const access = buildStudentExamAccess(r, sub, r, att);
+      if (!isAssigned) {
+        access.can_open = false;
+        access.open_block_reason =
+          sub?.status === "submitted" || sub?.submitted_at
+            ? "already_submitted"
+            : "not_assigned";
+      }
       const attendance =
         att || sub
           ? {
@@ -346,6 +386,8 @@ exports.listMyStudentExamSchedules = async (req, res) => {
         duration_elapsed: access.duration_elapsed,
         remaining_seconds: access.remaining_seconds,
         submission_status: access.submission_status,
+        is_assigned: isAssigned,
+        retained_by_submission: !isAssigned && Boolean(sub),
       };
     })
     );

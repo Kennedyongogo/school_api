@@ -21,10 +21,12 @@ const {
   gradePdfAnswers,
   readFileBytes,
 } = require("../utils/examPdfForm");
+const { normalizeWorkingPaper } = require("../utils/pdfManualAnswers");
 
 const PDF_WORKING_PAPER_ACCEPT = ["image/*", "application/pdf"];
 const PDF_MAX_WORKING_PAPERS = 20;
 const PDF_MAX_WORKING_PAPER_MB = 25;
+const PDF_MAX_MARKED_RETURN_MB = 25;
 
 function mimeMatchesAccept(mimetype, acceptList) {
   const mime = String(mimetype || "").toLowerCase();
@@ -56,6 +58,48 @@ async function assertPdfFormExam(exam) {
     err.statusCode = 400;
     throw err;
   }
+}
+
+async function loadSubmittedPdfSubmissionForMarking(examId, submissionId) {
+  const exam = await Exam.findByPk(examId);
+  if (!exam) return { error: { status: 404, message: "Exam not found." } };
+  const submission = await ExamSubmission.findByPk(submissionId);
+  if (!submission || submission.exam_id !== exam.id) {
+    return { error: { status: 404, message: "Submission not found for this exam." } };
+  }
+  if (submission.status !== "submitted") {
+    return { error: { status: 400, message: "Only submitted exams can be marked." } };
+  }
+  try {
+    await assertPdfFormExam(exam);
+  } catch (error) {
+    return { error: { status: error.statusCode || 400, message: error.message } };
+  }
+  return { exam, submission };
+}
+
+function submissionPdfAnswersRaw(submission) {
+  return submission.pdf_answers_json && typeof submission.pdf_answers_json === "object"
+    ? submission.pdf_answers_json
+    : {};
+}
+
+async function unlinkMarkedReturnFile(markedReturn) {
+  if (!markedReturn?.url) return;
+  const abs = path.join(__dirname, "..", "..", String(markedReturn.url).replace(/^\/+/, ""));
+  await fs.promises.unlink(abs).catch(() => {});
+}
+
+async function persistWorkingPapersUpdate(submission, raw, working_papers) {
+  await submission.update({
+    pdf_answers_json: {
+      ...raw,
+      mode: raw.mode || PDF_SOURCE_MANUAL,
+      entries: Array.isArray(raw.entries) ? raw.entries : [],
+      working_papers,
+    },
+  });
+  await submission.reload();
 }
 
 exports.uploadExamPdfTemplate = async (req, res) => {
@@ -275,6 +319,154 @@ exports.deleteSubmissionPdfWorkingPaper = async (req, res) => {
     }
 
     return res.json({ success: true, data: submission });
+  } catch (error) {
+    return res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+exports.uploadSubmissionPdfWorkingPaperMarkedReturn = async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ success: false, message: "No file uploaded." });
+
+    const loaded = await loadSubmittedPdfSubmissionForMarking(req.params.id, req.params.submissionId);
+    if (loaded.error) {
+      return rejectUploadedFile(req, res, loaded.error.status, loaded.error.message);
+    }
+    const { submission } = loaded;
+
+    if (!mimeMatchesAccept(req.file.mimetype, PDF_WORKING_PAPER_ACCEPT)) {
+      return rejectUploadedFile(req, res, 400, "Only photos (images) and PDF files are allowed.");
+    }
+    if (req.file.size > PDF_MAX_MARKED_RETURN_MB * 1024 * 1024) {
+      return rejectUploadedFile(
+        req,
+        res,
+        400,
+        `File exceeds maximum size of ${PDF_MAX_MARKED_RETURN_MB} MB.`
+      );
+    }
+
+    const fileId = String(req.params.fileId || "").trim();
+    if (!fileId) return rejectUploadedFile(req, res, 400, "Working paper id is required.");
+
+    const raw = submissionPdfAnswersRaw(submission);
+    const papers = Array.isArray(raw.working_papers) ? [...raw.working_papers] : [];
+    const index = papers.findIndex((file) => String(file?.id) === fileId);
+    if (index < 0) return rejectUploadedFile(req, res, 404, "Working paper not found.");
+
+    const relPath =
+      convertToRelativePath(req.file.path) ||
+      `uploads/exam-pdf-marked-returns/${path.basename(req.file.path)}`;
+    const markedReturn = {
+      url: relPath,
+      name: req.file.originalname || path.basename(req.file.path),
+      mime: req.file.mimetype,
+      size: req.file.size,
+      marked_at: new Date().toISOString(),
+      marked_by_user_id: req.user?.id != null ? String(req.user.id) : null,
+    };
+
+    const existing = papers[index];
+    if (existing?.marked_return) {
+      await unlinkMarkedReturnFile(existing.marked_return);
+    }
+
+    const nextPaper = normalizeWorkingPaper(
+      {
+        ...existing,
+        marked_return: markedReturn,
+      },
+      index
+    );
+
+    if (req.body?.marker_comment !== undefined) {
+      const rawComment = req.body.marker_comment;
+      nextPaper.marker_comment =
+        rawComment == null || String(rawComment).trim() === ""
+          ? null
+          : String(rawComment).trim().slice(0, 2000);
+    }
+
+    papers[index] = nextPaper;
+    await persistWorkingPapersUpdate(submission, raw, papers);
+
+    return res.json({
+      success: true,
+      data: submission,
+      marked_return: nextPaper.marked_return,
+      marker_comment: nextPaper.marker_comment || null,
+    });
+  } catch (error) {
+    if (req.file?.path) await fs.promises.unlink(req.file.path).catch(() => {});
+    return res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+exports.deleteSubmissionPdfWorkingPaperMarkedReturn = async (req, res) => {
+  try {
+    const loaded = await loadSubmittedPdfSubmissionForMarking(req.params.id, req.params.submissionId);
+    if (loaded.error) {
+      return res.status(loaded.error.status).json({ success: false, message: loaded.error.message });
+    }
+    const { submission } = loaded;
+
+    const fileId = String(req.params.fileId || "").trim();
+    if (!fileId) return res.status(400).json({ success: false, message: "Working paper id is required." });
+
+    const raw = submissionPdfAnswersRaw(submission);
+    const papers = Array.isArray(raw.working_papers) ? [...raw.working_papers] : [];
+    const index = papers.findIndex((file) => String(file?.id) === fileId);
+    if (index < 0) return res.status(404).json({ success: false, message: "Working paper not found." });
+
+    const existing = papers[index];
+    if (!existing?.marked_return) {
+      return res.status(404).json({ success: false, message: "No marked return file for this working paper." });
+    }
+
+    await unlinkMarkedReturnFile(existing.marked_return);
+    const nextPaper = normalizeWorkingPaper({ ...existing, marked_return: null }, index);
+    papers[index] = nextPaper;
+    await persistWorkingPapersUpdate(submission, raw, papers);
+
+    return res.json({ success: true, data: submission });
+  } catch (error) {
+    return res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+exports.updateSubmissionPdfWorkingPaperMarking = async (req, res) => {
+  try {
+    const loaded = await loadSubmittedPdfSubmissionForMarking(req.params.id, req.params.submissionId);
+    if (loaded.error) {
+      return res.status(loaded.error.status).json({ success: false, message: loaded.error.message });
+    }
+    const { submission } = loaded;
+
+    if (req.body?.marker_comment === undefined) {
+      return res.status(400).json({ success: false, message: "Provide marker_comment." });
+    }
+
+    const fileId = String(req.params.fileId || "").trim();
+    if (!fileId) return res.status(400).json({ success: false, message: "Working paper id is required." });
+
+    const raw = submissionPdfAnswersRaw(submission);
+    const papers = Array.isArray(raw.working_papers) ? [...raw.working_papers] : [];
+    const index = papers.findIndex((file) => String(file?.id) === fileId);
+    if (index < 0) return res.status(404).json({ success: false, message: "Working paper not found." });
+
+    const rawComment = req.body.marker_comment;
+    const marker_comment =
+      rawComment == null || String(rawComment).trim() === "" ? null : String(rawComment).trim().slice(0, 2000);
+
+    papers[index] = normalizeWorkingPaper({ ...papers[index], marker_comment }, index);
+    await persistWorkingPapersUpdate(submission, raw, papers);
+
+    return res.json({
+      success: true,
+      data: submission,
+      marker_comment,
+      marked_return: papers[index].marked_return || null,
+    });
   } catch (error) {
     return res.status(400).json({ success: false, message: error.message });
   }

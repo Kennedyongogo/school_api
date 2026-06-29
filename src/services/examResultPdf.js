@@ -97,10 +97,10 @@ async function generateExamResultPdfBuffer(data) {
     doc.moveTo(MARGIN, y).lineTo(MARGIN + CONTENT_WIDTH, y).lineWidth(0.5).strokeColor("#cbd5e1").stroke();
     y += 14;
 
-    if (data.showQuestionBreakdown === false) {
+    if (data.showQuestionBreakdown === false && !(Array.isArray(data.workingPapers) && data.workingPapers.length)) {
       doc.font("Helvetica").fontSize(9).fillColor("#64748b");
       doc.text(
-        "This was a PDF exam. Your teacher awarded an overall score — individual question marks are not included.",
+        "This was a PDF exam. Your teacher awarded an overall score — detailed feedback is not included in this PDF.",
         MARGIN,
         y,
         { width: CONTENT_WIDTH }
@@ -109,53 +109,94 @@ async function generateExamResultPdfBuffer(data) {
       return;
     }
 
-    doc.font("Helvetica-Bold").fontSize(11).fillColor(primary);
-    doc.text("Question breakdown", MARGIN, y, { lineBreak: false });
-    y += 18;
+    if (Array.isArray(data.questions) && data.questions.length) {
+      doc.font("Helvetica-Bold").fontSize(11).fillColor(primary);
+      doc.text("Question breakdown", MARGIN, y, { lineBreak: false });
+      y += 18;
 
-    const questions = Array.isArray(data.questions) ? data.questions : [];
-    questions.forEach((q, index) => {
-      y = ensureSpace(doc, y, 80);
-      doc.font("Helvetica-Bold").fontSize(10).fillColor("#0f172a");
-      doc.text(`Question ${index + 1}`, MARGIN, y, { lineBreak: false });
-      doc.font("Helvetica").fontSize(9).fillColor("#64748b");
-      doc.text(`Score: ${q.score} / ${q.maxScore}`, MARGIN + CONTENT_WIDTH - 90, y, {
-        width: 90,
-        align: "right",
-        lineBreak: false,
-      });
-      y += 14;
+      data.questions.forEach((q, index) => {
+        y = ensureSpace(doc, y, 80);
+        doc.font("Helvetica-Bold").fontSize(10).fillColor("#0f172a");
+        doc.text(`Question ${index + 1}`, MARGIN, y, { lineBreak: false });
+        if (q.maxScore != null && Number(q.maxScore) > 0) {
+          doc.font("Helvetica").fontSize(9).fillColor("#64748b");
+          doc.text(`Score: ${q.score ?? "—"} / ${q.maxScore}`, MARGIN + CONTENT_WIDTH - 90, y, {
+            width: 90,
+            align: "right",
+            lineBreak: false,
+          });
+        } else if (q.score != null) {
+          doc.font("Helvetica").fontSize(9).fillColor("#64748b");
+          doc.text(`Score: ${q.score} marks`, MARGIN + CONTENT_WIDTH - 90, y, {
+            width: 90,
+            align: "right",
+            lineBreak: false,
+          });
+        }
+        y += 14;
 
-      y = ensureSpace(doc, y, 40);
-      doc.font("Helvetica-Bold").fontSize(9).fillColor("#475569");
-      doc.text("Question", MARGIN, y, { lineBreak: false });
-      y += 12;
-      y = writeWrapped(doc, q.question, MARGIN, y, CONTENT_WIDTH, { fontSize: 9, color: "#0f172a" }) + 8;
-
-      y = ensureSpace(doc, y, 36);
-      doc.font("Helvetica-Bold").fontSize(9).fillColor("#475569");
-      doc.text("Your answer", MARGIN, y, { lineBreak: false });
-      y += 12;
-      y = writeWrapped(doc, q.answer, MARGIN, y, CONTENT_WIDTH, { fontSize: 9, color: "#0f172a" }) + 8;
-
-      if (q.comment) {
-        y = ensureSpace(doc, y, 36);
-        doc.font("Helvetica-Bold").fontSize(9).fillColor("#0369a1");
-        doc.text("Teacher feedback", MARGIN, y, { lineBreak: false });
+        y = ensureSpace(doc, y, 40);
+        doc.font("Helvetica-Bold").fontSize(9).fillColor("#475569");
+        doc.text("Question", MARGIN, y, { lineBreak: false });
         y += 12;
-        y = writeWrapped(doc, q.comment, MARGIN, y, CONTENT_WIDTH, {
-          fontSize: 9,
-          color: "#0c4a6e",
-          font: "Helvetica-Oblique",
-        }) + 8;
-      }
+        y = writeWrapped(doc, q.question, MARGIN, y, CONTENT_WIDTH, { fontSize: 9, color: "#0f172a" }) + 8;
 
-      y += 6;
-      doc.moveTo(MARGIN, y).lineTo(MARGIN + CONTENT_WIDTH, y).lineWidth(0.25).strokeColor("#e2e8f0").stroke();
-      y += 12;
-    });
+        y = ensureSpace(doc, y, 36);
+        doc.font("Helvetica-Bold").fontSize(9).fillColor("#475569");
+        doc.text("Your answer", MARGIN, y, { lineBreak: false });
+        y += 12;
+        y = writeWrapped(doc, q.answer, MARGIN, y, CONTENT_WIDTH, { fontSize: 9, color: "#0f172a" }) + 8;
 
-    if (!questions.length) {
+        if (q.comment) {
+          y = ensureSpace(doc, y, 36);
+          doc.font("Helvetica-Bold").fontSize(9).fillColor("#0369a1");
+          doc.text("Teacher feedback", MARGIN, y, { lineBreak: false });
+          y += 12;
+          y = writeWrapped(doc, q.comment, MARGIN, y, CONTENT_WIDTH, {
+            fontSize: 9,
+            color: "#0c4a6e",
+            font: "Helvetica-Oblique",
+          }) + 8;
+        }
+
+        y += 6;
+        doc.moveTo(MARGIN, y).lineTo(MARGIN + CONTENT_WIDTH, y).lineWidth(0.25).strokeColor("#e2e8f0").stroke();
+        y += 12;
+      });
+    }
+
+    const workingPapers = Array.isArray(data.workingPapers) ? data.workingPapers : [];
+    if (workingPapers.length) {
+      y = ensureSpace(doc, y, 24);
+      doc.font("Helvetica-Bold").fontSize(11).fillColor(primary);
+      doc.text("Uploaded working papers", MARGIN, y, { lineBreak: false });
+      y += 18;
+
+      workingPapers.forEach((paper, index) => {
+        y = ensureSpace(doc, y, 48);
+        doc.font("Helvetica-Bold").fontSize(10).fillColor("#0f172a");
+        doc.text(`${index + 1}. ${paper.name || "Working paper"}`, MARGIN, y, { lineBreak: false });
+        y += 14;
+        if (paper.markedReturn?.name) {
+          doc.font("Helvetica").fontSize(9).fillColor("#15803d");
+          doc.text(`Marked copy: ${paper.markedReturn.name}`, MARGIN, y, { width: CONTENT_WIDTH });
+          y = doc.y + 6;
+        }
+        if (paper.markerComment) {
+          doc.font("Helvetica-Bold").fontSize(9).fillColor("#0369a1");
+          doc.text("Teacher feedback", MARGIN, y, { lineBreak: false });
+          y += 12;
+          y = writeWrapped(doc, paper.markerComment, MARGIN, y, CONTENT_WIDTH, {
+            fontSize: 9,
+            color: "#0c4a6e",
+            font: "Helvetica-Oblique",
+          }) + 8;
+        }
+        y += 8;
+      });
+    }
+
+    if (!data.questions?.length && !workingPapers.length) {
       doc.font("Helvetica").fontSize(9).fillColor("#64748b");
       doc.text("No question details available.", MARGIN, y, { width: CONTENT_WIDTH });
     }

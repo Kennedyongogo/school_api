@@ -9,6 +9,10 @@ const {
   CurriculumSubject,
 } = require("../models");
 const { isPdfFormExam } = require("./examPdfForm");
+const {
+  parseManualPdfAnswers,
+  findSubmittedExamSubmissionForPortal,
+} = require("./pdfManualAnswers");
 
 const userSafe = { attributes: { exclude: ["password_hash"] } };
 
@@ -83,49 +87,79 @@ async function loadStudentExamResultForPortal({ userId, examId }) {
     "Student";
 
   let questions = [];
+  let workingPapers = [];
   let submission = null;
-  if (!pdfForm) {
-    submission = await ExamSubmission.findOne({
-      where: { exam_id: exam.id, student_id: student.id, status: "submitted" },
-      attributes: ["id", "pdf_completed_file_path"],
-    });
-    if (submission) {
-      const answers = await ExamAnswer.findAll({
-        where: { submission_id: submission.id },
-        include: [
-          {
-            model: ExamQuestion,
-            as: "question",
-            required: true,
-            attributes: ["id", "question_text", "marks"],
-          },
-        ],
-        order: [["created_at", "ASC"]],
-      });
+  const submissionAttributes = pdfForm
+    ? ["id", "pdf_completed_file_path", "pdf_answers_json", "updated_at", "created_at"]
+    : ["id", "pdf_completed_file_path", "updated_at", "created_at"];
 
-      questions = answers
-        .filter((a) => a.question)
-        .map((a) => ({
-          question: a.question.question_text,
-          answer: formatExamAnswerText(a),
-          score: Number(a.marks_obtained || 0),
-          maxScore: Number(a.question.marks || 0),
-          comment: a.marker_comment || null,
-        }));
-    }
-  } else {
-    submission = await ExamSubmission.findOne({
-      where: { exam_id: exam.id, student_id: student.id, status: "submitted" },
-      attributes: ["id", "pdf_completed_file_path"],
+  submission = await findSubmittedExamSubmissionForPortal(ExamSubmission, {
+    examId: exam.id,
+    studentId: student.id,
+    attributes: submissionAttributes,
+  });
+
+  if (!pdfForm && submission) {
+    const answers = await ExamAnswer.findAll({
+      where: { submission_id: submission.id },
+      include: [
+        {
+          model: ExamQuestion,
+          as: "question",
+          required: true,
+          attributes: ["id", "question_text", "marks"],
+        },
+      ],
+      order: [["created_at", "ASC"]],
     });
+
+    questions = answers
+      .filter((a) => a.question)
+      .map((a) => ({
+        question: a.question.question_text,
+        answer: formatExamAnswerText(a),
+        score: Number(a.marks_obtained || 0),
+        maxScore: Number(a.question.marks || 0),
+        comment: a.marker_comment || null,
+      }));
+  } else if (pdfForm && submission) {
+    const { entries, working_papers: workingPapersRaw } = parseManualPdfAnswers(submission.pdf_answers_json);
+    if (entries.length) {
+      questions = entries.map((entry) => ({
+        question: entry.question ? `Question ${entry.question}` : "Question",
+        answer: String(entry.answer || "").trim() || "—",
+        score: entry.marks_obtained != null ? Number(entry.marks_obtained) : null,
+        maxScore: null,
+        comment: entry.marker_comment || null,
+      }));
+    }
+    workingPapers = workingPapersRaw.map((paper, index) => ({
+      id: paper.id,
+      name: paper.name || `Working paper ${index + 1}`,
+      mime: paper.mime || null,
+      studentFileUrl: paper.url || null,
+      markerComment: paper.marker_comment || null,
+      markedReturn: paper.marked_return?.url
+        ? {
+            url: paper.marked_return.url,
+            name: paper.marked_return.name || "Marked file",
+            mime: paper.marked_return.mime || null,
+          }
+        : null,
+    }));
   }
+
+  const showQuestionBreakdown = !pdfForm || questions.length > 0;
+  const showWorkingPapers = pdfForm && workingPapers.length > 0;
 
   const totalScore = Number(result.marks_obtained ?? result.marks ?? 0);
   const data = {
     examId: exam.id,
     examTitle: exam.title || "Exam",
     examType: exam.exam_type || "questions",
-    showQuestionBreakdown: !pdfForm,
+    isPdfExam: pdfForm,
+    showQuestionBreakdown,
+    showWorkingPapers,
     studentName,
     subjectName: result.curriculum_subject?.name || null,
     gradedAt: result.graded_at || null,
@@ -136,6 +170,7 @@ async function loadStudentExamResultForPortal({ userId, examId }) {
     gradeRemarks: result.grade_remarks || null,
     points: result.points != null ? Number(result.points) : null,
     questions,
+    workingPapers,
     canDownloadAnsweredPdf: Boolean(pdfForm && submission?.pdf_completed_file_path),
   };
 

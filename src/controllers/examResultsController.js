@@ -115,11 +115,22 @@ exports.gradeExamSubmission = async (req, res) => {
     }
     const attempt = await ExamAttempt.findOne({
       where: { exam_id: exam.id, student_id: submission.student_id },
+      order: [["updated_at", "DESC"]],
     });
 
-    let totalScore = attempt?.total_score;
+    let totalScore =
+      attempt?.total_score != null && attempt.total_score !== ""
+        ? Number(attempt.total_score)
+        : null;
+    if (totalScore != null && !Number.isFinite(totalScore)) totalScore = null;
     if (totalScore == null && isPdfFormExam(exam) && submission.pdf_auto_score != null) {
       totalScore = Number(submission.pdf_auto_score);
+    }
+    if (isPdfFormExam(exam) && (totalScore == null || !Number.isFinite(Number(totalScore)))) {
+      return res.status(400).json({
+        success: false,
+        message: "Save the total score before grading this PDF exam.",
+      });
     }
     if (totalScore == null) {
       const answers = await ExamAnswer.findAll({

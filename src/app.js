@@ -18,6 +18,7 @@ const parentRoutes = require("./routes/parentRoutes");
 const schoolAdminRoutes = require("./routes/schoolAdminRoutes");
 const departmentRoutes = require("./routes/departmentRoutes");
 const examRoutes = require("./routes/examRoutes");
+const assignmentRoutes = require("./routes/assignmentRoutes");
 const examTemplateRoutes = require("./routes/examTemplateRoutes");
 const examQuestionRoutes = require("./routes/examQuestionRoutes");
 const examAttemptRoutes = require("./routes/examAttemptRoutes");
@@ -90,6 +91,10 @@ const examAnswersUploadPath = path.join(__dirname, "..", "uploads", "exam-answer
 const examPdfTemplatesUploadPath = path.join(__dirname, "..", "uploads", "exam-pdf-templates");
 const examPdfCompletedUploadPath = path.join(__dirname, "..", "uploads", "exam-pdf-completed");
 const examPdfWorkingPapersUploadPath = path.join(__dirname, "..", "uploads", "exam-pdf-working-papers");
+const examPdfMarkedReturnsUploadPath = path.join(__dirname, "..", "uploads", "exam-pdf-marked-returns");
+const assignmentAnswersUploadPath = path.join(__dirname, "..", "uploads", "assignment-answers");
+const assignmentPdfWorkingPapersUploadPath = path.join(__dirname, "..", "uploads", "assignment-pdf-working-papers");
+const assignmentPdfMarkedReturnsUploadPath = path.join(__dirname, "..", "uploads", "assignment-pdf-marked-returns");
 
 app.use("/uploads/profiles", express.static(profilesUploadPath));
 app.use("/uploads/documents", express.static(documentsUploadPath));
@@ -116,6 +121,10 @@ app.use("/uploads/exam-answers", cors(), express.static(examAnswersUploadPath));
 app.use("/uploads/exam-pdf-templates", cors(), express.static(examPdfTemplatesUploadPath));
 app.use("/uploads/exam-pdf-completed", cors(), express.static(examPdfCompletedUploadPath));
 app.use("/uploads/exam-pdf-working-papers", cors(), express.static(examPdfWorkingPapersUploadPath));
+app.use("/uploads/exam-pdf-marked-returns", cors(), express.static(examPdfMarkedReturnsUploadPath));
+app.use("/uploads/assignment-answers", cors(), express.static(assignmentAnswersUploadPath));
+app.use("/uploads/assignment-pdf-working-papers", cors(), express.static(assignmentPdfWorkingPapersUploadPath));
+app.use("/uploads/assignment-pdf-marked-returns", cors(), express.static(assignmentPdfMarkedReturnsUploadPath));
 
 app.use("/api/users", userRoutes);
 app.use("/api/students", studentRoutes);
@@ -124,6 +133,7 @@ app.use("/api/parents", parentRoutes);
 app.use("/api/school-admins", schoolAdminRoutes);
 app.use("/api/departments", departmentRoutes);
 app.use("/api/exams", examRoutes);
+app.use("/api/assignments", assignmentRoutes);
 app.use("/api/exam-templates", examTemplateRoutes);
 app.use("/api/exam-questions", examQuestionRoutes);
 app.use("/api/exam-attempts", examAttemptRoutes);

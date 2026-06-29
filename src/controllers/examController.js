@@ -18,6 +18,10 @@ const path = require("path");
 const { convertToRelativePath } = require("../utils/filePath");
 const OpenAI = require("openai");
 const { parsePdfBuffer } = require("../utils/pdfParseBuffer");
+const {
+  parseManualPdfAnswers,
+  submissionHasManualPdfEntries,
+} = require("../utils/pdfManualAnswers");
 const mammoth = require("mammoth");
 const Tesseract = require("tesseract.js");
 const { Op } = require("sequelize");
@@ -1846,12 +1850,13 @@ exports.markExamSubmission = async (req, res) => {
       submitted_at: submission.submitted_at || new Date(),
       end_time: submission.submitted_at || new Date(),
     });
+    await attempt.reload();
 
     return res.json({
       success: true,
       data: {
         submission_id: submission.id,
-        total_score: attempt.total_score,
+        total_score: Number(attempt.total_score),
         percentage: attempt.percentage,
         is_passed: attempt.is_passed,
       },
@@ -1905,6 +1910,73 @@ exports.markExamAnswer = async (req, res) => {
         answer_id: answer.id,
         marks_obtained: answer.marks_obtained,
         marker_comment: answer.marker_comment,
+      },
+    });
+  } catch (error) {
+    return res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+exports.markPdfManualAnswer = async (req, res) => {
+  try {
+    const exam = await Exam.findByPk(req.params.id);
+    if (!exam) return res.status(404).json({ success: false, message: "Exam not found" });
+    const submission = await ExamSubmission.findByPk(req.params.submissionId);
+    if (!submission || submission.exam_id !== exam.id) {
+      return res.status(404).json({ success: false, message: "Submission not found for this exam" });
+    }
+    if (submission.status !== "submitted") {
+      return res.status(400).json({ success: false, message: "Only submitted exams can be marked." });
+    }
+    if (!submissionHasManualPdfEntries(submission)) {
+      return res.status(400).json({ success: false, message: "This submission has no manual PDF answer entries." });
+    }
+
+    const entryId = String(req.params.entryId || "");
+    const raw = submission.pdf_answers_json && typeof submission.pdf_answers_json === "object"
+      ? submission.pdf_answers_json
+      : {};
+    const entries = Array.isArray(raw.entries) ? [...raw.entries] : [];
+    const index = entries.findIndex((entry) => String(entry?.id) === entryId);
+    if (index < 0) {
+      return res.status(404).json({ success: false, message: "PDF answer entry not found." });
+    }
+
+    const entry = { ...entries[index] };
+    const hasMarks =
+      req.body?.marks_obtained !== undefined && req.body?.marks_obtained !== null && req.body?.marks_obtained !== "";
+    if (hasMarks) {
+      const marksObtained = Number(req.body.marks_obtained);
+      if (!Number.isFinite(marksObtained) || marksObtained < 0) {
+        return res.status(400).json({ success: false, message: "marks_obtained must be a valid non-negative number." });
+      }
+      entry.marks_obtained = marksObtained;
+    }
+    if (req.body?.marker_comment !== undefined) {
+      const rawComment = req.body.marker_comment;
+      entry.marker_comment =
+        rawComment == null || String(rawComment).trim() === "" ? null : String(rawComment).trim().slice(0, 2000);
+    }
+    if (!hasMarks && req.body?.marker_comment === undefined) {
+      return res.status(400).json({ success: false, message: "Provide marks_obtained and/or marker_comment." });
+    }
+
+    entries[index] = entry;
+    await submission.update({
+      pdf_answers_json: {
+        ...raw,
+        mode: raw.mode || "manual",
+        entries,
+        working_papers: Array.isArray(raw.working_papers) ? raw.working_papers : [],
+      },
+    });
+
+    return res.json({
+      success: true,
+      data: {
+        entry_id: entryId,
+        marks_obtained: entry.marks_obtained != null ? Number(entry.marks_obtained) : null,
+        marker_comment: entry.marker_comment || null,
       },
     });
   } catch (error) {

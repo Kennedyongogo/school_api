@@ -18,6 +18,7 @@ const {
   listExamSubmissionsForMarking,
   markExamSubmission,
   markExamAnswer,
+  markPdfManualAnswer,
   cleanupExamStaleDraftSubmissions,
 } = require("../controllers/examController");
 const {
@@ -27,6 +28,9 @@ const {
   saveSubmissionPdfAnswers,
   uploadSubmissionPdfWorkingPaper,
   deleteSubmissionPdfWorkingPaper,
+  uploadSubmissionPdfWorkingPaperMarkedReturn,
+  deleteSubmissionPdfWorkingPaperMarkedReturn,
+  updateSubmissionPdfWorkingPaperMarking,
 } = require("../controllers/examPdfFormController");
 const {
   listOnlineExamsUpcoming,
@@ -43,6 +47,7 @@ const {
   uploadDocument,
   uploadExamAnswerFile,
   uploadExamPdfWorkingPaper,
+  uploadExamPdfMarkedReturn,
   uploadExamPdfTemplate: uploadExamPdfTemplateMw,
   handleUploadError,
 } = require("../middleware/upload");
@@ -112,6 +117,32 @@ router.get("/:id/submissions/me", authenticateUser, authorizeRoles(["student"]),
 router.get("/:id/submissions", authenticateUser, authorizeRoles(TEACH_OR_STAFF), listExamSubmissionsForMarking);
 router.put("/:id/submissions/:submissionId/mark", authenticateUser, authorizeRoles(TEACH_OR_STAFF), markExamSubmission);
 router.put("/:id/submissions/:submissionId/answers/:answerId/mark", authenticateUser, authorizeRoles(TEACH_OR_STAFF), markExamAnswer);
+router.put(
+  "/:id/submissions/:submissionId/pdf-answers/:entryId/mark",
+  authenticateUser,
+  authorizeRoles(TEACH_OR_STAFF),
+  markPdfManualAnswer
+);
+router.post(
+  "/:id/submissions/:submissionId/pdf-working-papers/:fileId/marked-return",
+  authenticateUser,
+  authorizeRoles(TEACH_OR_STAFF),
+  uploadExamPdfMarkedReturn,
+  handleUploadError,
+  uploadSubmissionPdfWorkingPaperMarkedReturn
+);
+router.delete(
+  "/:id/submissions/:submissionId/pdf-working-papers/:fileId/marked-return",
+  authenticateUser,
+  authorizeRoles(TEACH_OR_STAFF),
+  deleteSubmissionPdfWorkingPaperMarkedReturn
+);
+router.put(
+  "/:id/submissions/:submissionId/pdf-working-papers/:fileId/marking",
+  authenticateUser,
+  authorizeRoles(TEACH_OR_STAFF),
+  updateSubmissionPdfWorkingPaperMarking
+);
 router.post("/:id/submissions/cleanup-stale-drafts", authenticateUser, authorizeRoles(SCHOOL_ADMIN_ROLES), cleanupExamStaleDraftSubmissions);
 router.put("/submissions/:submissionId/answers", authenticateUser, authorizeRoles(["student"]), saveSubmissionAnswers);
 router.post(

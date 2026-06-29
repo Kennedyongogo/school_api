@@ -85,6 +85,8 @@ const storage = multer.diskStorage({
       uploadPath = path.join(__dirname, "..", "..", "uploads", "exam-answers");
     } else if (file.fieldname === "exam_pdf_working_paper") {
       uploadPath = path.join(__dirname, "..", "..", "uploads", "exam-pdf-working-papers");
+    } else if (file.fieldname === "exam_pdf_marked_return") {
+      uploadPath = path.join(__dirname, "..", "..", "uploads", "exam-pdf-marked-returns");
     } else if (file.fieldname === "exam_pdf_template" || file.fieldname === "exam_pdf_completed") {
       uploadPath = path.join(
         __dirname,
@@ -93,6 +95,12 @@ const storage = multer.diskStorage({
         "uploads",
         file.fieldname === "exam_pdf_completed" ? "exam-pdf-completed" : "exam-pdf-templates"
       );
+    } else if (file.fieldname === "assignment_answer_file") {
+      uploadPath = path.join(__dirname, "..", "..", "uploads", "assignment-answers");
+    } else if (file.fieldname === "assignment_pdf_working_paper") {
+      uploadPath = path.join(__dirname, "..", "..", "uploads", "assignment-pdf-working-papers");
+    } else if (file.fieldname === "assignment_pdf_marked_return") {
+      uploadPath = path.join(__dirname, "..", "..", "uploads", "assignment-pdf-marked-returns");
     } else {
       uploadPath = path.join(__dirname, "..", "..", "uploads", "misc");
     }
@@ -162,7 +170,11 @@ const fileFilter = (req, file, cb) => {
   const isTeacherStudentProfilePic =
     file.fieldname === "teacher_profile_picture" || file.fieldname === "student_profile_picture";
   const isExamPdfWorkingPaper = file.fieldname === "exam_pdf_working_paper";
+  const isExamPdfMarkedReturn = file.fieldname === "exam_pdf_marked_return";
   const isExamAnswerFile = file.fieldname === "exam_answer_file";
+  const isAssignmentPdfWorkingPaper = file.fieldname === "assignment_pdf_working_paper";
+  const isAssignmentPdfMarkedReturn = file.fieldname === "assignment_pdf_marked_return";
+  const isAssignmentAnswerFile = file.fieldname === "assignment_answer_file";
 
   // Some phones/providers send image uploads as application/octet-stream.
   // Accept by extension for known image fields.
@@ -172,7 +184,11 @@ const fileFilter = (req, file, cb) => {
       isSchoolLogoField ||
       isTeacherStudentProfilePic ||
       isExamPdfWorkingPaper ||
-      isExamAnswerFile) &&
+      isExamPdfMarkedReturn ||
+      isExamAnswerFile ||
+      isAssignmentPdfWorkingPaper ||
+      isAssignmentPdfMarkedReturn ||
+      isAssignmentAnswerFile) &&
     file.mimetype === "application/octet-stream" &&
     hasAllowedImageExtension
   ) {
@@ -215,7 +231,11 @@ const uploadDocument = upload.single("document");
 // Student exam answer attachment (image / PDF / document)
 const uploadExamAnswerFile = upload.single("exam_answer_file");
 const uploadExamPdfWorkingPaper = upload.single("exam_pdf_working_paper");
+const uploadExamPdfMarkedReturn = upload.single("exam_pdf_marked_return");
 const uploadExamPdfTemplate = upload.single("exam_pdf_template");
+const uploadAssignmentAnswerFile = upload.single("assignment_answer_file");
+const uploadAssignmentPdfWorkingPaper = upload.single("assignment_pdf_working_paper");
+const uploadAssignmentPdfMarkedReturn = upload.single("assignment_pdf_marked_return");
 
 // Middleware for file upload (generic)
 const uploadFile = upload.single("file");
@@ -364,7 +384,11 @@ module.exports = {
   uploadDocument,
   uploadExamAnswerFile,
   uploadExamPdfWorkingPaper,
+  uploadExamPdfMarkedReturn,
   uploadExamPdfTemplate,
+  uploadAssignmentAnswerFile,
+  uploadAssignmentPdfWorkingPaper,
+  uploadAssignmentPdfMarkedReturn,
   uploadFile,
   uploadDocuments,
   uploadBlogImage,

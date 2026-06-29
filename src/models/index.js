@@ -6,6 +6,10 @@ const Parent = require("./parent")(sequelize);
 const SchoolAdmin = require("./schoolAdmin")(sequelize);
 const Department = require("./department")(sequelize);
 const Exam = require("./exam")(sequelize);
+const Assignment = require("./assignment")(sequelize);
+const AssignmentQuestion = require("./assignmentQuestion")(sequelize);
+const AssignmentSubmission = require("./assignmentSubmission")(sequelize);
+const AssignmentAnswer = require("./assignmentAnswer")(sequelize);
 const ExamQuestion = require("./examQuestion")(sequelize);
 const ExamAttempt = require("./examAttempt")(sequelize);
 const ExamSubmission = require("./examSubmission")(sequelize);
@@ -85,6 +89,10 @@ const models = {
   SchoolAdmin,
   Department,
   Exam,
+  Assignment,
+  AssignmentQuestion,
+  AssignmentSubmission,
+  AssignmentAnswer,
   ExamQuestion,
   ExamAttempt,
   ExamSubmission,
@@ -159,6 +167,7 @@ const { ensureInAppNotificationSchema } = require("../utils/ensureInAppNotificat
 const { ensureFeeBillingSchema } = require("../utils/ensureFeeBillingSchema");
 const { ensureAuditTrailSchema } = require("../utils/ensureAuditTrailSchema");
 const { ensureAdmissionApplicationSchema } = require("../utils/ensureAdmissionApplicationSchema");
+const { ensureAssignmentSchema } = require("../utils/ensureAssignmentSchema");
 const initializeModels = async () => {
   try {
     console.log("🔄 Creating/updating school system tables...");
@@ -172,6 +181,7 @@ const initializeModels = async () => {
     await ensureFeeBillingSchema();
     await ensureAuditTrailSchema();
     await ensureAdmissionApplicationSchema();
+    await ensureAssignmentSchema();
     await User.sync({ force: false, alter: false });
     await GoogleMeetCredential.sync({ force: false, alter: false });
     await Teacher.sync({ force: false, alter: false });
@@ -194,6 +204,10 @@ const initializeModels = async () => {
     await ExamQuestion.sync({ force: false, alter: false });
     await ExamSubmission.sync({ force: false, alter: false });
     await ExamAnswer.sync({ force: false, alter: false });
+    await Assignment.sync({ force: false, alter: false });
+    await AssignmentQuestion.sync({ force: false, alter: false });
+    await AssignmentSubmission.sync({ force: false, alter: false });
+    await AssignmentAnswer.sync({ force: false, alter: false });
     await Installment.sync({ force: false, alter: false });
     await Curriculum.sync({ force: false, alter: false });
     await CurriculumClass.sync({ force: false, alter: false });
@@ -1159,6 +1173,36 @@ const setupAssociations = () => {
       foreignKey: "live_class_id",
       as: "live_class",
     });
+
+    Curriculum.hasMany(Assignment, { foreignKey: "curriculum_id", as: "assignments" });
+    Assignment.belongsTo(Curriculum, { foreignKey: "curriculum_id", as: "curriculum" });
+    CurriculumClass.hasMany(Assignment, { foreignKey: "curriculum_class_id", as: "assignments" });
+    Assignment.belongsTo(CurriculumClass, { foreignKey: "curriculum_class_id", as: "curriculum_class" });
+    CurriculumClassLevel.hasMany(Assignment, { foreignKey: "curriculum_class_level_id", as: "assignments" });
+    Assignment.belongsTo(CurriculumClassLevel, { foreignKey: "curriculum_class_level_id", as: "curriculum_class_level" });
+    CurriculumSubject.hasMany(Assignment, { foreignKey: "curriculum_subject_id", as: "assignments" });
+    Assignment.belongsTo(CurriculumSubject, { foreignKey: "curriculum_subject_id", as: "curriculum_subject" });
+    AcademicTerm.hasMany(Assignment, { foreignKey: "academic_term_id", as: "assignments" });
+    Assignment.belongsTo(AcademicTerm, { foreignKey: "academic_term_id", as: "academic_term" });
+    Teacher.hasMany(Assignment, { foreignKey: "teacher_id", as: "assignments" });
+    Assignment.belongsTo(Teacher, { foreignKey: "teacher_id", as: "teacher" });
+    User.hasMany(Assignment, { foreignKey: "created_by_user_id", as: "created_assignments" });
+    Assignment.belongsTo(User, { foreignKey: "created_by_user_id", as: "creator" });
+
+    Assignment.hasMany(AssignmentQuestion, { foreignKey: "assignment_id", as: "questions" });
+    AssignmentQuestion.belongsTo(Assignment, { foreignKey: "assignment_id", as: "assignment" });
+
+    Assignment.hasMany(AssignmentSubmission, { foreignKey: "assignment_id", as: "submissions" });
+    AssignmentSubmission.belongsTo(Assignment, { foreignKey: "assignment_id", as: "assignment" });
+    Student.hasMany(AssignmentSubmission, { foreignKey: "student_id", as: "assignment_submissions" });
+    AssignmentSubmission.belongsTo(Student, { foreignKey: "student_id", as: "student" });
+    User.hasMany(AssignmentSubmission, { foreignKey: "graded_by_user_id", as: "graded_assignment_submissions" });
+    AssignmentSubmission.belongsTo(User, { foreignKey: "graded_by_user_id", as: "graded_by" });
+
+    AssignmentSubmission.hasMany(AssignmentAnswer, { foreignKey: "submission_id", as: "answers" });
+    AssignmentAnswer.belongsTo(AssignmentSubmission, { foreignKey: "submission_id", as: "submission" });
+    AssignmentQuestion.hasMany(AssignmentAnswer, { foreignKey: "question_id", as: "answers" });
+    AssignmentAnswer.belongsTo(AssignmentQuestion, { foreignKey: "question_id", as: "question" });
 
     User.hasMany(AuditTrail, { foreignKey: "user_id", as: "audit_trails", onDelete: "SET NULL" });
     AuditTrail.belongsTo(User, { foreignKey: "user_id", as: "user" });

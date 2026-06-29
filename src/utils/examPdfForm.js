@@ -198,19 +198,14 @@ function formatLegacyAnswerValue(value) {
   return String(value ?? "").trim();
 }
 
+const { normalizeWorkingPaper } = require("./pdfManualAnswers");
+
 function normalizeManualPdfAnswers(raw) {
   if (!raw || typeof raw !== "object") {
     return { mode: PDF_SOURCE_MANUAL, entries: [], working_papers: [] };
   }
   const workingPapers = Array.isArray(raw.working_papers)
-    ? raw.working_papers.map((file, index) => ({
-        id: String(file?.id || `paper-${index + 1}`),
-        url: String(file?.url || "").trim(),
-        name: String(file?.name || "").trim(),
-        mime: String(file?.mime || "").trim(),
-        size: Number.isFinite(Number(file?.size)) ? Number(file.size) : null,
-        uploaded_at: file?.uploaded_at || null,
-      }))
+    ? raw.working_papers.map((file, index) => normalizeWorkingPaper(file, index))
     : [];
   if (Array.isArray(raw.entries)) {
     return {
