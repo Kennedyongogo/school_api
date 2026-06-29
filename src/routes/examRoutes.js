@@ -53,7 +53,9 @@ const {
 } = require("../middleware/upload");
 
 const { STAFF_ROLES, ADMIN_PORTAL_API_ROLES, SCHOOL_ADMIN_ROLES } = require("../constants/userRoles");
+const requireStudentPortalUnlocked = require("../middleware/requireStudentPortalUnlocked");
 const TEACH_OR_STAFF = [...STAFF_ROLES, "teacher"];
+const studentExam = [authenticateUser, authorizeRoles(["student"]), requireStudentPortalUnlocked];
 
 router.get("/", authenticateUser, authorizeRoles(TEACH_OR_STAFF), listExams);
 router.get("/online-upcoming", authenticateUser, authorizeRoles(TEACH_OR_STAFF), listOnlineExamsUpcoming);
@@ -86,19 +88,17 @@ router.post(
 );
 router.put("/:id/pdf-answer-key", authenticateUser, authorizeRoles(TEACH_OR_STAFF), updateExamPdfAnswerKey);
 router.get("/:id/pdf-template", authenticateUser, getExamPdfTemplate);
-router.put("/submissions/:submissionId/pdf-answers", authenticateUser, authorizeRoles(["student"]), saveSubmissionPdfAnswers);
+router.put("/submissions/:submissionId/pdf-answers", ...studentExam, saveSubmissionPdfAnswers);
 router.post(
   "/submissions/:submissionId/pdf-working-papers",
-  authenticateUser,
-  authorizeRoles(["student"]),
+  ...studentExam,
   uploadExamPdfWorkingPaper,
   handleUploadError,
   uploadSubmissionPdfWorkingPaper
 );
 router.delete(
   "/submissions/:submissionId/pdf-working-papers/:fileId",
-  authenticateUser,
-  authorizeRoles(["student"]),
+  ...studentExam,
   deleteSubmissionPdfWorkingPaper
 );
 router.get("/:id", authenticateUser, authorizeRoles(TEACH_OR_STAFF), getExam);
@@ -112,8 +112,8 @@ router.get("/:id/live-tracking", authenticateUser, authorizeRoles(TEACH_OR_STAFF
 router.post("/:id/live-recording", authenticateUser, authorizeRoles(TEACH_OR_STAFF), createOnlineExamRecording);
 router.get("/:id/proctor-monitor", authenticateUser, authorizeRoles(TEACH_OR_STAFF), getExamProctorMonitor);
 router.get("/:id/attendance", authenticateUser, authorizeRoles(TEACH_OR_STAFF), getExamAttendance);
-router.post("/:id/submissions", authenticateUser, authorizeRoles(["student"]), createExamSubmission);
-router.get("/:id/submissions/me", authenticateUser, authorizeRoles(["student"]), getMyExamSubmission);
+router.post("/:id/submissions", ...studentExam, createExamSubmission);
+router.get("/:id/submissions/me", ...studentExam, getMyExamSubmission);
 router.get("/:id/submissions", authenticateUser, authorizeRoles(TEACH_OR_STAFF), listExamSubmissionsForMarking);
 router.put("/:id/submissions/:submissionId/mark", authenticateUser, authorizeRoles(TEACH_OR_STAFF), markExamSubmission);
 router.put("/:id/submissions/:submissionId/answers/:answerId/mark", authenticateUser, authorizeRoles(TEACH_OR_STAFF), markExamAnswer);
@@ -144,16 +144,15 @@ router.put(
   updateSubmissionPdfWorkingPaperMarking
 );
 router.post("/:id/submissions/cleanup-stale-drafts", authenticateUser, authorizeRoles(SCHOOL_ADMIN_ROLES), cleanupExamStaleDraftSubmissions);
-router.put("/submissions/:submissionId/answers", authenticateUser, authorizeRoles(["student"]), saveSubmissionAnswers);
+router.put("/submissions/:submissionId/answers", ...studentExam, saveSubmissionAnswers);
 router.post(
   "/submissions/:submissionId/answers/:questionId/upload",
-  authenticateUser,
-  authorizeRoles(["student"]),
+  ...studentExam,
   uploadExamAnswerFile,
   handleUploadError,
   uploadSubmissionAnswerFile
 );
-router.put("/submissions/:submissionId/submit", authenticateUser, authorizeRoles(["student"]), submitExamSubmission);
+router.put("/submissions/:submissionId/submit", ...studentExam, submitExamSubmission);
 
 router.use(errorHandler);
 

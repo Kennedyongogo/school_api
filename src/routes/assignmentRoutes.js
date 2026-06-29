@@ -40,13 +40,15 @@ const {
   handleUploadError,
 } = require("../middleware/upload");
 const { STAFF_ROLES } = require("../constants/userRoles");
+const requireStudentPortalUnlocked = require("../middleware/requireStudentPortalUnlocked");
 
 const TEACH_OR_STAFF = [...STAFF_ROLES, "teacher"];
+const studentAssignment = [authenticateUser, authorizeRoles(["student"]), requireStudentPortalUnlocked];
 
 router.get("/", authenticateUser, authorizeRoles(TEACH_OR_STAFF), listAssignments);
 router.post("/", authenticateUser, authorizeRoles(TEACH_OR_STAFF), createAssignment);
-router.get("/student/my", authenticateUser, authorizeRoles(["student"]), listMyStudentAssignments);
-router.get("/student/:assignmentId/feedback", authenticateUser, authorizeRoles(["student"]), getMyStudentAssignmentFeedback);
+router.get("/student/my", ...studentAssignment, listMyStudentAssignments);
+router.get("/student/:assignmentId/feedback", ...studentAssignment, getMyStudentAssignmentFeedback);
 
 router.get("/:id", authenticateUser, authorizeRoles(TEACH_OR_STAFF), getAssignment);
 router.put("/:id", authenticateUser, authorizeRoles(TEACH_OR_STAFF), updateAssignment);
@@ -89,30 +91,27 @@ router.put(
   updateSubmissionPdfWorkingPaperMarking
 );
 
-router.post("/:id/submissions", authenticateUser, authorizeRoles(["student"]), createAssignmentSubmission);
-router.get("/:id/submissions/me", authenticateUser, authorizeRoles(["student"]), getMyAssignmentSubmission);
+router.post("/:id/submissions", ...studentAssignment, createAssignmentSubmission);
+router.get("/:id/submissions/me", ...studentAssignment, getMyAssignmentSubmission);
 
-router.put("/submissions/:submissionId/answers", authenticateUser, authorizeRoles(["student"]), saveSubmissionAnswers);
-router.put("/submissions/:submissionId/submit", authenticateUser, authorizeRoles(["student"]), submitAssignmentSubmission);
-router.put("/submissions/:submissionId/pdf-answers", authenticateUser, authorizeRoles(["student"]), saveSubmissionPdfAnswers);
+router.put("/submissions/:submissionId/answers", ...studentAssignment, saveSubmissionAnswers);
+router.put("/submissions/:submissionId/submit", ...studentAssignment, submitAssignmentSubmission);
+router.put("/submissions/:submissionId/pdf-answers", ...studentAssignment, saveSubmissionPdfAnswers);
 router.post(
   "/submissions/:submissionId/pdf-working-papers",
-  authenticateUser,
-  authorizeRoles(["student"]),
+  ...studentAssignment,
   uploadAssignmentPdfWorkingPaper,
   handleUploadError,
   uploadSubmissionPdfWorkingPaper
 );
 router.delete(
   "/submissions/:submissionId/pdf-working-papers/:fileId",
-  authenticateUser,
-  authorizeRoles(["student"]),
+  ...studentAssignment,
   deleteSubmissionPdfWorkingPaper
 );
 router.post(
   "/submissions/:submissionId/answers/:questionId/upload",
-  authenticateUser,
-  authorizeRoles(["student"]),
+  ...studentAssignment,
   uploadAssignmentAnswerFile,
   handleUploadError,
   uploadSubmissionAnswerFile

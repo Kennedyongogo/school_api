@@ -5,6 +5,7 @@ const {
   listClassTransferClasses,
   listClassTransferLevels,
   listClassTransferLevelStudents,
+  moveClassTransferStudent,
 } = require("../controllers/classTransferController");
 const { authenticateUser, authorizeRoles } = require("../middleware/auth");
 const { ADMIN_PORTAL_API_ROLES } = require("../constants/userRoles");
@@ -27,6 +28,12 @@ router.get(
   authenticateUser,
   authorizeRoles(ADMIN_PORTAL_API_ROLES),
   listClassTransferLevelStudents
+);
+router.post(
+  "/students/:studentId/move",
+  authenticateUser,
+  authorizeRoles(ADMIN_PORTAL_API_ROLES),
+  moveClassTransferStudent
 );
 
 module.exports = router;

@@ -1,4 +1,4 @@
-const { sequelize, Curriculum, CurriculumClass, CurriculumClassLevel, Student, User } = require("../models");
+const { sequelize, Curriculum, CurriculumClass, CurriculumClassLevel, Student, User, StudentTermRegistration, Teacher } = require("../models");
 
 const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -261,5 +261,141 @@ exports.listClassTransferLevelStudents = async (req, res) => {
   } catch (error) {
     const status = error.status || 500;
     return res.status(status).json({ success: false, message: error.message || "Could not load students." });
+  }
+};
+
+async function resolveHomeroomTeacherId(curriculumClassId) {
+  if (!curriculumClassId) return null;
+  const row = await Teacher.findOne({
+    where: {
+      class_teacher_curriculum_class_id: curriculumClassId,
+      is_class_teacher: true,
+    },
+    attributes: ["id"],
+  });
+  return row ? row.id : null;
+}
+
+/** Move a student to another term and/or class (class transfer drag-and-drop). */
+exports.moveClassTransferStudent = async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const studentId = normalizeUuid(req.params.studentId, "studentId");
+    const targetClassId = normalizeUuid(req.body?.curriculum_class_id, "curriculum_class_id");
+    const targetLevelId = normalizeUuid(req.body?.curriculum_class_level_id, "curriculum_class_level_id");
+
+    const student = await Student.findByPk(studentId, {
+      attributes: [
+        "id",
+        "admission_number",
+        "gender",
+        "enrollment_date",
+        "curriculum_id",
+        "curriculum_class_id",
+        "curriculum_class_level_id",
+        "class_teacher_id",
+      ],
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+    if (!student) {
+      await t.rollback();
+      return res.status(404).json({ success: false, message: "Student not found." });
+    }
+
+    const targetClass = await CurriculumClass.findByPk(targetClassId, {
+      attributes: ["id", "name", "code", "curriculum_id"],
+      transaction: t,
+    });
+    if (!targetClass) {
+      await t.rollback();
+      return res.status(404).json({ success: false, message: "Target class not found." });
+    }
+
+    const targetLevel = await CurriculumClassLevel.findOne({
+      where: { id: targetLevelId, curriculum_class_id: targetClassId },
+      attributes: ["id", "name", "level_order", "curriculum_class_id"],
+      transaction: t,
+    });
+    if (!targetLevel) {
+      await t.rollback();
+      return res.status(404).json({ success: false, message: "Target term not found in that class." });
+    }
+
+    const samePlacement =
+      String(student.curriculum_class_id) === String(targetClassId) &&
+      String(student.curriculum_class_level_id) === String(targetLevelId);
+    if (samePlacement) {
+      await t.rollback();
+      const unchanged = await Student.findByPk(studentId, {
+        attributes: ["id", "admission_number", "gender", "enrollment_date", "curriculum_class_level_id"],
+        include: [
+          {
+            model: User,
+            as: "user",
+            attributes: ["id", "full_name", "username", "email", "profile_image"],
+          },
+        ],
+      });
+      return res.json({
+        success: true,
+        message: "Student is already in that term.",
+        data: { student: mapClassTransferStudent(unchanged), unchanged: true },
+      });
+    }
+
+    const homeroomTeacherId = await resolveHomeroomTeacherId(targetClassId);
+    const today = new Date().toISOString().slice(0, 10);
+
+    await student.update(
+      {
+        curriculum_id: targetClass.curriculum_id,
+        curriculum_class_id: targetClassId,
+        curriculum_class_level_id: targetLevelId,
+        class_teacher_id: homeroomTeacherId,
+      },
+      { transaction: t }
+    );
+
+    await StudentTermRegistration.update(
+      { status: "completed", completed_on: today },
+      {
+        where: { student_id: studentId, status: "active" },
+        transaction: t,
+      }
+    );
+
+    await t.commit();
+
+    const refreshed = await Student.findByPk(studentId, {
+      attributes: ["id", "admission_number", "gender", "enrollment_date", "curriculum_class_level_id"],
+      include: [
+        {
+          model: User,
+          as: "user",
+          attributes: ["id", "full_name", "username", "email", "profile_image"],
+        },
+      ],
+    });
+
+    const label = `${targetLevel.name} · ${targetClass.name}`;
+    return res.json({
+      success: true,
+      message: `Moved to ${label}.`,
+      data: {
+        student: mapClassTransferStudent(refreshed),
+        placement: {
+          curriculum_id: targetClass.curriculum_id,
+          curriculum_class_id: targetClassId,
+          curriculum_class_level_id: targetLevelId,
+        },
+        class: { id: targetClass.id, name: targetClass.name, code: targetClass.code },
+        level: { id: targetLevel.id, name: targetLevel.name, level_order: targetLevel.level_order },
+      },
+    });
+  } catch (error) {
+    await t.rollback();
+    const status = error.status || 500;
+    return res.status(status).json({ success: false, message: error.message || "Could not move student." });
   }
 };

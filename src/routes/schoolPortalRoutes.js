@@ -61,13 +61,20 @@ const {
   admitAllExamScheduleLobby,
 } = require("../controllers/examScheduleLobbyController");
 const { authorizeRoles } = require("../middleware/auth");
+const requireStudentPortalUnlocked = require("../middleware/requireStudentPortalUnlocked");
+
+const studentPortalContent = [
+  authenticateUser,
+  authorizeRoles(["student"]),
+  requireStudentPortalUnlocked,
+];
 
 router.get("/notifications", authenticateUser, listSchoolPortalNotifications);
 router.patch("/notifications/:id/read", authenticateUser, markSchoolPortalNotificationRead);
 router.post("/notifications/mark-all-read", authenticateUser, markAllSchoolPortalNotificationsRead);
 
-router.post("/live-session/join", authenticateUser, authorizeRoles(["student"]), recordLiveSessionJoin);
-router.post("/live-session/leave", authenticateUser, authorizeRoles(["student"]), recordLiveSessionLeave);
+router.post("/live-session/join", ...studentPortalContent, recordLiveSessionJoin);
+router.post("/live-session/leave", ...studentPortalContent, recordLiveSessionLeave);
 router.post("/livekit/connection-error", authenticateUser, reportLiveKitConnectionError);
 router.get("/live-class/:id", authenticateUser, getLiveClassRoom);
 router.post("/live-class/:id/livekit-token", authenticateUser, issueLiveKitToken);
@@ -88,18 +95,18 @@ router.post("/live-class/:id/lobby/leave", authenticateUser, leaveLobby);
 router.post("/live-class/:id/lobby/:entryId/admit", authenticateUser, admitLobbyEntry);
 router.post("/live-class/:id/lobby/:entryId/deny", authenticateUser, denyLobbyEntry);
 router.post("/live-class/:id/lobby/admit-all", authenticateUser, admitAllLobby);
-router.get("/student/timetable-lessons", authenticateUser, authorizeRoles(["student"]), listMyStudentTimetableLessons);
-router.get("/student/exams", authenticateUser, authorizeRoles(["student"]), listMyStudentExamSchedules);
-router.get("/student/exam-schedules", authenticateUser, authorizeRoles(["student"]), listMyStudentExamSchedules);
-router.get("/student/exam-results/:examScheduleId", authenticateUser, authorizeRoles(["student"]), getMyStudentExamResult);
-router.get("/student/exam-results/exam/:examId", authenticateUser, authorizeRoles(["student"]), getMyStudentExamResult);
-router.get("/student/exam-results/:examScheduleId/pdf", authenticateUser, authorizeRoles(["student"]), streamMyStudentExamResultPdf);
-router.get("/student/exam-results/exam/:examId/pdf", authenticateUser, authorizeRoles(["student"]), streamMyStudentExamResultPdf);
-router.get("/student/exam-results/:examScheduleId/answered-pdf", authenticateUser, authorizeRoles(["student"]), streamMyStudentExamAnsweredPdf);
-router.get("/student/exam-results/exam/:examId/answered-pdf", authenticateUser, authorizeRoles(["student"]), streamMyStudentExamAnsweredPdf);
-router.get("/student/report-cards", authenticateUser, authorizeRoles(["student"]), listMyStudentReportCards);
-router.get("/student/report-cards/:id/pdf", authenticateUser, authorizeRoles(["student"]), streamMyStudentReportCardPdf);
-router.get("/student/report-cards/:id", authenticateUser, authorizeRoles(["student"]), getMyStudentReportCard);
+router.get("/student/timetable-lessons", ...studentPortalContent, listMyStudentTimetableLessons);
+router.get("/student/exams", ...studentPortalContent, listMyStudentExamSchedules);
+router.get("/student/exam-schedules", ...studentPortalContent, listMyStudentExamSchedules);
+router.get("/student/exam-results/:examScheduleId", ...studentPortalContent, getMyStudentExamResult);
+router.get("/student/exam-results/exam/:examId", ...studentPortalContent, getMyStudentExamResult);
+router.get("/student/exam-results/:examScheduleId/pdf", ...studentPortalContent, streamMyStudentExamResultPdf);
+router.get("/student/exam-results/exam/:examId/pdf", ...studentPortalContent, streamMyStudentExamResultPdf);
+router.get("/student/exam-results/:examScheduleId/answered-pdf", ...studentPortalContent, streamMyStudentExamAnsweredPdf);
+router.get("/student/exam-results/exam/:examId/answered-pdf", ...studentPortalContent, streamMyStudentExamAnsweredPdf);
+router.get("/student/report-cards", ...studentPortalContent, listMyStudentReportCards);
+router.get("/student/report-cards/:id/pdf", ...studentPortalContent, streamMyStudentReportCardPdf);
+router.get("/student/report-cards/:id", ...studentPortalContent, getMyStudentReportCard);
 router.get("/exam/:id", authenticateUser, getExamLiveRoom);
 router.post("/exam/:id/livekit-token", authenticateUser, issueExamScheduleLiveKitToken);
 router.get("/exam/:id/lobby", authenticateUser, getExamScheduleLobby);

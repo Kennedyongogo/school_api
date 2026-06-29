@@ -9,6 +9,10 @@ const {
   updateStudent,
   deleteStudent,
 } = require("../controllers/studentController");
+const {
+  getMyTermStatus,
+  startMyTerm,
+} = require("../controllers/studentTermRegistrationController");
 const { authenticateUser, authorizeRoles } = require("../middleware/auth");
 const { errorHandler } = require("../middleware/errorHandler");
 const { uploadStudentProfilePicture, handleUploadError } = require("../middleware/upload");
@@ -17,6 +21,8 @@ const { STAFF_ROLES, ADMIN_PORTAL_API_ROLES, SCHOOL_ADMIN_ROLES } = require("../
 const TEACH_OR_STAFF = [...STAFF_ROLES, "teacher"];
 
 router.get("/me", authenticateUser, authorizeRoles(["student"]), getMyStudentProfile);
+router.get("/me/term-status", authenticateUser, authorizeRoles(["student"]), getMyTermStatus);
+router.post("/me/start-term", authenticateUser, authorizeRoles(["student"]), startMyTerm);
 router.get("/", authenticateUser, authorizeRoles(TEACH_OR_STAFF), listStudents);
 router.get(
   "/users-without-profile",

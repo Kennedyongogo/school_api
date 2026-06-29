@@ -2,6 +2,7 @@ const { sequelize } = require("../config/database");
 const User = require("./user")(sequelize);
 const Teacher = require("./teacher")(sequelize);
 const Student = require("./student")(sequelize);
+const StudentTermRegistration = require("./studentTermRegistration")(sequelize);
 const Parent = require("./parent")(sequelize);
 const SchoolAdmin = require("./schoolAdmin")(sequelize);
 const Department = require("./department")(sequelize);
@@ -85,6 +86,7 @@ const models = {
   User,
   Teacher,
   Student,
+  StudentTermRegistration,
   Parent,
   SchoolAdmin,
   Department,
@@ -168,6 +170,7 @@ const { ensureFeeBillingSchema } = require("../utils/ensureFeeBillingSchema");
 const { ensureAuditTrailSchema } = require("../utils/ensureAuditTrailSchema");
 const { ensureAdmissionApplicationSchema } = require("../utils/ensureAdmissionApplicationSchema");
 const { ensureAssignmentSchema } = require("../utils/ensureAssignmentSchema");
+const { ensureStudentTermRegistrationSchema } = require("../utils/ensureStudentTermRegistrationSchema");
 const initializeModels = async () => {
   try {
     console.log("🔄 Creating/updating school system tables...");
@@ -182,10 +185,12 @@ const initializeModels = async () => {
     await ensureAuditTrailSchema();
     await ensureAdmissionApplicationSchema();
     await ensureAssignmentSchema();
+    await ensureStudentTermRegistrationSchema();
     await User.sync({ force: false, alter: false });
     await GoogleMeetCredential.sync({ force: false, alter: false });
     await Teacher.sync({ force: false, alter: false });
     await Student.sync({ force: false, alter: false });
+    await StudentTermRegistration.sync({ force: false, alter: false });
     await Parent.sync({ force: false, alter: false });
     await SchoolAdmin.sync({ force: false, alter: false });
     await Department.sync({ force: false, alter: false });
@@ -324,6 +329,27 @@ const setupAssociations = () => {
       as: "students",
     });
     Student.belongsTo(CurriculumClassLevel, {
+      foreignKey: "curriculum_class_level_id",
+      as: "curriculum_class_level",
+    });
+
+    Student.hasMany(StudentTermRegistration, {
+      foreignKey: "student_id",
+      as: "term_registrations",
+    });
+    StudentTermRegistration.belongsTo(Student, {
+      foreignKey: "student_id",
+      as: "student",
+    });
+    StudentTermRegistration.belongsTo(Curriculum, {
+      foreignKey: "curriculum_id",
+      as: "curriculum",
+    });
+    StudentTermRegistration.belongsTo(CurriculumClass, {
+      foreignKey: "curriculum_class_id",
+      as: "curriculum_class",
+    });
+    StudentTermRegistration.belongsTo(CurriculumClassLevel, {
       foreignKey: "curriculum_class_level_id",
       as: "curriculum_class_level",
     });
