@@ -15,13 +15,14 @@ const {
   AcademicTerm,
 } = require("../models");
 const { ASSIGNMENT_PDF_FORM_TYPE, isPdfFormAssignment } = require("../utils/assignmentForm");
+const { normalizeWallClockToDate, DEFAULT_SCHEDULE_TIMEZONE } = require("../utils/examScheduleTime");
 const {
   validateAndNormalizeAssignedStudentIds,
   isStudentAssignedToAssignment,
   pickStudentAssignmentSubmission,
   isAssignmentOpen,
 } = require("../utils/assignmentAssignedStudents");
-const { submissionHasManualPdfEntries } = require("../utils/pdfManualAnswers");
+const { submissionHasManualPdfEntries, parseManualPdfAnswers } = require("../utils/pdfManualAnswers");
 const {
   normalizeManualPdfAnswers,
   PDF_SOURCE_MANUAL,
@@ -115,6 +116,12 @@ function normalizeQuestion(raw, index) {
     order_number: Number.isFinite(Number(q.order_number)) ? Number(q.order_number) : index + 1,
     required: Boolean(q.required),
   };
+}
+
+function normalizeDueDateInput(value) {
+  if (value === undefined) return undefined;
+  if (value === null || value === "") return null;
+  return normalizeWallClockToDate(value, DEFAULT_SCHEDULE_TIMEZONE);
 }
 
 async function findStudentByUser(userId) {
@@ -267,7 +274,7 @@ exports.createAssignment = async (req, res) => {
         teacher_id: teacherId,
         created_by_user_id: req.user?.id || null,
         assigned_student_ids: assignedStudentIds,
-        due_date: body.due_date || null,
+        due_date: normalizeDueDateInput(body.due_date),
         published_at: status === "published" ? new Date() : null,
         is_active: body.is_active !== false,
       },
@@ -302,7 +309,7 @@ exports.updateAssignment = async (req, res) => {
     if (body.title != null) patch.title = String(body.title).trim();
     if (body.description !== undefined) patch.description = body.description || null;
     if (body.instructions !== undefined) patch.instructions = body.instructions || null;
-    if (body.due_date !== undefined) patch.due_date = body.due_date || null;
+    if (body.due_date !== undefined) patch.due_date = normalizeDueDateInput(body.due_date);
     if (body.is_active !== undefined) patch.is_active = Boolean(body.is_active);
     if (body.curriculum_id !== undefined) patch.curriculum_id = body.curriculum_id || null;
     if (body.curriculum_class_id !== undefined) patch.curriculum_class_id = body.curriculum_class_id || null;
@@ -319,6 +326,13 @@ exports.updateAssignment = async (req, res) => {
       });
     }
 
+    let nextAssignmentType = row.assignment_type;
+    if (body.assignment_type !== undefined) {
+      nextAssignmentType =
+        String(body.assignment_type).trim() === ASSIGNMENT_PDF_FORM_TYPE ? ASSIGNMENT_PDF_FORM_TYPE : "questions";
+      patch.assignment_type = nextAssignmentType;
+    }
+
     if (body.status && ASSIGNMENT_STATUSES.has(String(body.status))) {
       patch.status = String(body.status);
       if (patch.status === "published" && !row.published_at) patch.published_at = new Date();
@@ -326,17 +340,22 @@ exports.updateAssignment = async (req, res) => {
 
     await row.update(patch, { transaction: tx });
 
-    if (Array.isArray(body.questions) && !isPdfFormAssignment(row)) {
+    const effectivePdf = isPdfFormAssignment({ assignment_type: nextAssignmentType });
+
+    if (effectivePdf) {
       await AssignmentQuestion.destroy({ where: { assignment_id: row.id }, transaction: tx });
+    } else if (Array.isArray(body.questions)) {
       const normalizedQuestions = body.questions
         .map((q, i) => normalizeQuestion(q, i))
         .filter((q) => q.question_text);
-      if (normalizedQuestions.length) {
-        await AssignmentQuestion.bulkCreate(
-          normalizedQuestions.map((q) => ({ ...q, assignment_id: row.id })),
-          { transaction: tx }
-        );
+      if (!normalizedQuestions.length) {
+        throw new Error("At least one question is required for an online assignment.");
       }
+      await AssignmentQuestion.destroy({ where: { assignment_id: row.id }, transaction: tx });
+      await AssignmentQuestion.bulkCreate(
+        normalizedQuestions.map((q) => ({ ...q, assignment_id: row.id })),
+        { transaction: tx }
+      );
     }
 
     await tx.commit();
@@ -365,6 +384,12 @@ exports.publishAssignment = async (req, res) => {
     const row = await Assignment.findByPk(req.params.id);
     if (!row) return res.status(404).json({ success: false, message: "Assignment not found." });
     await assertCanManageAssignment(req, row);
+    if (isPdfFormAssignment(row) && !row.pdf_template_path) {
+      return res.status(400).json({
+        success: false,
+        message: "Upload the assignment PDF before publishing.",
+      });
+    }
     await row.update({ status: "published", published_at: row.published_at || new Date() });
     return res.json({ success: true, data: row });
   } catch (error) {
@@ -973,25 +998,32 @@ exports.getMyStudentAssignmentFeedback = async (req, res) => {
     }
 
     const questionTotal = (assignment.questions || []).reduce((sum, q) => sum + Number(q.marks || 0), 0);
+    const pdfForm = isPdfFormAssignment(assignment);
     let questions = [];
     let workingPapers = [];
 
-    if (isPdfFormAssignment(assignment)) {
-      const { parseManualPdfAnswers } = require("../utils/pdfManualAnswers");
+    if (pdfForm) {
       const { entries, working_papers: papers } = parseManualPdfAnswers(submission.pdf_answers_json);
-      questions = entries.map((entry) => ({
-        question: entry.question ? `Question ${entry.question}` : "Question",
-        answer: String(entry.answer || "").trim() || "—",
-        score: entry.marks_obtained != null ? Number(entry.marks_obtained) : null,
-        comment: entry.marker_comment || null,
-      }));
+      questions = entries.map((entry, index) => ({
+          orderNumber: index + 1,
+          question: entry.question ? `Question ${entry.question}` : `Answer ${index + 1}`,
+          answer: String(entry.answer || "").trim() || "—",
+          score: entry.marks_obtained != null ? Number(entry.marks_obtained) : null,
+          maxScore: null,
+          comment: entry.marker_comment || null,
+        }));
       workingPapers = papers.map((paper, index) => ({
         id: paper.id,
-        name: paper.name || `Paper ${index + 1}`,
+        name: paper.name || `Working paper ${index + 1}`,
+        mime: paper.mime || null,
         studentFileUrl: paper.url || null,
         markerComment: paper.marker_comment || null,
         markedReturn: paper.marked_return?.url
-          ? { url: paper.marked_return.url, name: paper.marked_return.name || "Marked file" }
+          ? {
+              url: paper.marked_return.url,
+              name: paper.marked_return.name || "Marked file",
+              mime: paper.marked_return.mime || null,
+            }
           : null,
       }));
     } else {
@@ -1022,8 +1054,12 @@ exports.getMyStudentAssignmentFeedback = async (req, res) => {
         assignmentId: assignment.id,
         assignmentTitle: assignment.title,
         assignmentType: assignment.assignment_type,
+        isPdfAssignment: pdfForm,
+        pdfTemplatePath: assignment.pdf_template_path || null,
+        showQuestionBreakdown: !pdfForm || questions.length > 0,
+        showWorkingPapers: pdfForm && workingPapers.length > 0,
         totalScore: Number(submission.total_score || 0),
-        totalMax: questionTotal || null,
+        totalMax: pdfForm ? null : questionTotal || null,
         markerFeedback: submission.marker_feedback || null,
         gradedAt: submission.graded_at || null,
         questions,

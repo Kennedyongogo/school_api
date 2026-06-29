@@ -54,6 +54,7 @@ const schoolPortalRoutes = require("./routes/schoolPortalRoutes");
 const googleMeetRoutes = require("./routes/googleMeetRoutes");
 const publicRoutes = require("./routes/publicRoutes");
 const auditTrailRoutes = require("./routes/auditTrailRoutes");
+const classTransferRoutes = require("./routes/classTransferRoutes");
 
 const app = express();
 
@@ -93,6 +94,7 @@ const examPdfCompletedUploadPath = path.join(__dirname, "..", "uploads", "exam-p
 const examPdfWorkingPapersUploadPath = path.join(__dirname, "..", "uploads", "exam-pdf-working-papers");
 const examPdfMarkedReturnsUploadPath = path.join(__dirname, "..", "uploads", "exam-pdf-marked-returns");
 const assignmentAnswersUploadPath = path.join(__dirname, "..", "uploads", "assignment-answers");
+const assignmentPdfTemplatesUploadPath = path.join(__dirname, "..", "uploads", "assignment-pdf-templates");
 const assignmentPdfWorkingPapersUploadPath = path.join(__dirname, "..", "uploads", "assignment-pdf-working-papers");
 const assignmentPdfMarkedReturnsUploadPath = path.join(__dirname, "..", "uploads", "assignment-pdf-marked-returns");
 
@@ -123,6 +125,7 @@ app.use("/uploads/exam-pdf-completed", cors(), express.static(examPdfCompletedUp
 app.use("/uploads/exam-pdf-working-papers", cors(), express.static(examPdfWorkingPapersUploadPath));
 app.use("/uploads/exam-pdf-marked-returns", cors(), express.static(examPdfMarkedReturnsUploadPath));
 app.use("/uploads/assignment-answers", cors(), express.static(assignmentAnswersUploadPath));
+app.use("/uploads/assignment-pdf-templates", cors(), express.static(assignmentPdfTemplatesUploadPath));
 app.use("/uploads/assignment-pdf-working-papers", cors(), express.static(assignmentPdfWorkingPapersUploadPath));
 app.use("/uploads/assignment-pdf-marked-returns", cors(), express.static(assignmentPdfMarkedReturnsUploadPath));
 
@@ -157,6 +160,7 @@ app.use("/api/mpesa", mpesaRoutes);
 /** Alias for Daraja docs / ngrok setups that use /mpesa/callback */
 app.post("/mpesa/callback", stkCallback);
 app.use("/api/curricula", curriculumRoutes);
+app.use("/api/class-transfer", classTransferRoutes);
 app.use("/api/news", newsRoutes);
 app.use("/api/school-services", schoolServiceRoutes);
 app.use("/api/portal-reviews", portalReviewRoutes);

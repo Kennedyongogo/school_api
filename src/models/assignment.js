@@ -93,6 +93,10 @@ module.exports = (sequelize) => {
         allowNull: false,
         defaultValue: true,
       },
+      pdf_template_path: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
     },
     {
       tableName: "assignments",

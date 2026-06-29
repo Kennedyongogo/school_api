@@ -1,20 +1,135 @@
 const fs = require("fs");
 const path = require("path");
-const { Assignment, AssignmentSubmission, Student } = require("../models");
+const { Assignment, AssignmentSubmission, Student, Teacher } = require("../models");
 const { convertToRelativePath } = require("../utils/filePath");
 const { isPdfFormAssignment } = require("../utils/assignmentForm");
 const { isStudentAssignedToAssignment, isAssignmentOpen } = require("../utils/assignmentAssignedStudents");
 const {
   normalizeManualPdfAnswers,
   PDF_SOURCE_MANUAL,
+  readFileBytes,
 } = require("../utils/examPdfForm");
 const { normalizeWorkingPaper } = require("../utils/pdfManualAnswers");
+const { ADMIN_PORTAL_API_ROLES, SCHOOL_ADMIN_ROLES } = require("../constants/userRoles");
 const { v4: uuidv4 } = require("uuid");
 
 const PDF_WORKING_PAPER_ACCEPT = ["image/*", "application/pdf"];
 const PDF_MAX_WORKING_PAPERS = 20;
 const PDF_MAX_WORKING_PAPER_MB = 25;
 const PDF_MAX_MARKED_RETURN_MB = 25;
+
+async function findStudentByUser(userId) {
+  if (!userId) return null;
+  return Student.findOne({ where: { user_id: userId } });
+}
+
+async function findTeacherByUser(userId) {
+  if (!userId) return null;
+  return Teacher.findOne({ where: { user_id: userId }, attributes: ["id"] });
+}
+
+function isAdminRole(role) {
+  return ADMIN_PORTAL_API_ROLES.includes(role) || SCHOOL_ADMIN_ROLES.includes(role);
+}
+
+async function assertCanManageAssignment(req, assignment) {
+  if (!assignment) {
+    const err = new Error("Assignment not found.");
+    err.statusCode = 404;
+    throw err;
+  }
+  if (isAdminRole(req.user?.role)) return;
+  if (req.user?.role !== "teacher") {
+    const err = new Error("Forbidden.");
+    err.statusCode = 403;
+    throw err;
+  }
+  const teacher = await findTeacherByUser(req.user.id);
+  if (!teacher || String(assignment.teacher_id) !== String(teacher.id)) {
+    const err = new Error("You can only manage assignments you created.");
+    err.statusCode = 403;
+    throw err;
+  }
+}
+
+async function assertCanAccessAssignmentPdf(req, assignment) {
+  if (!assignment) {
+    const err = new Error("Assignment not found.");
+    err.statusCode = 404;
+    throw err;
+  }
+  if (req.user?.role === "student") {
+    if (!isPdfFormAssignment(assignment)) {
+      const err = new Error("This assignment is not available as a PDF assignment.");
+      err.statusCode = 400;
+      throw err;
+    }
+    if (assignment.status !== "published") {
+      const err = new Error("This assignment is not published.");
+      err.statusCode = 403;
+      throw err;
+    }
+    const student = await findStudentByUser(req.user?.id);
+    if (!student || !isStudentAssignedToAssignment(assignment, student.id)) {
+      const err = new Error("You are not assigned to this assignment.");
+      err.statusCode = 403;
+      throw err;
+    }
+    return;
+  }
+  await assertCanManageAssignment(req, assignment);
+}
+
+exports.uploadAssignmentPdfTemplate = async (req, res) => {
+  try {
+    const assignment = await Assignment.findByPk(req.params.id);
+    if (!assignment) return res.status(404).json({ success: false, message: "Assignment not found." });
+    await assertCanManageAssignment(req, assignment);
+    if (!req.file) return res.status(400).json({ success: false, message: "PDF file is required." });
+
+    const relPath = convertToRelativePath(req.file.path);
+    if (assignment.pdf_template_path && assignment.pdf_template_path !== relPath) {
+      const oldAbs = path.join(__dirname, "..", "..", String(assignment.pdf_template_path).replace(/^\/+/, ""));
+      await fs.promises.unlink(oldAbs).catch(() => {});
+    }
+
+    await assignment.update({
+      assignment_type: "pdf_form",
+      pdf_template_path: relPath,
+    });
+
+    const updated = await Assignment.findByPk(assignment.id);
+    return res.json({
+      success: true,
+      data: {
+        pdf_template_path: updated.pdf_template_path,
+        message:
+          "Assignment PDF uploaded. Students will read this paper and add their own question numbers and answers.",
+      },
+    });
+  } catch (error) {
+    if (req.file?.path) await fs.promises.unlink(req.file.path).catch(() => {});
+    const code = error.statusCode || 400;
+    return res.status(code).json({ success: false, message: error.message || "PDF upload failed." });
+  }
+};
+
+exports.getAssignmentPdfTemplate = async (req, res) => {
+  try {
+    const assignment = await Assignment.findByPk(req.params.id);
+    await assertCanAccessAssignmentPdf(req, assignment);
+    if (!assignment?.pdf_template_path) {
+      return res.status(404).json({ success: false, message: "Assignment PDF has not been uploaded yet." });
+    }
+    const bytes = await readFileBytes(assignment.pdf_template_path);
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `inline; filename="assignment-${assignment.id}.pdf"`);
+    return res.send(bytes);
+  } catch (error) {
+    const code = error.statusCode || 500;
+    return res.status(code).json({ success: false, message: error.message });
+  }
+};
 
 async function findStudentByUser(userId) {
   if (!userId) return null;

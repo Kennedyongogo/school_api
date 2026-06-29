@@ -27,11 +27,14 @@ const {
   uploadSubmissionPdfWorkingPaperMarkedReturn,
   deleteSubmissionPdfWorkingPaperMarkedReturn,
   updateSubmissionPdfWorkingPaperMarking,
+  uploadAssignmentPdfTemplate,
+  getAssignmentPdfTemplate,
 } = require("../controllers/assignmentPdfController");
 const { authenticateUser, authorizeRoles } = require("../middleware/auth");
 const { errorHandler } = require("../middleware/errorHandler");
 const {
   uploadAssignmentAnswerFile,
+  uploadAssignmentPdfTemplate: uploadAssignmentPdfTemplateMw,
   uploadAssignmentPdfWorkingPaper,
   uploadAssignmentPdfMarkedReturn,
   handleUploadError,
@@ -49,6 +52,16 @@ router.get("/:id", authenticateUser, authorizeRoles(TEACH_OR_STAFF), getAssignme
 router.put("/:id", authenticateUser, authorizeRoles(TEACH_OR_STAFF), updateAssignment);
 router.delete("/:id", authenticateUser, authorizeRoles(TEACH_OR_STAFF), deleteAssignment);
 router.post("/:id/publish", authenticateUser, authorizeRoles(TEACH_OR_STAFF), publishAssignment);
+
+router.post(
+  "/:id/pdf-template",
+  authenticateUser,
+  authorizeRoles(TEACH_OR_STAFF),
+  uploadAssignmentPdfTemplateMw,
+  handleUploadError,
+  uploadAssignmentPdfTemplate
+);
+router.get("/:id/pdf-template", authenticateUser, getAssignmentPdfTemplate);
 
 router.get("/:id/submissions", authenticateUser, authorizeRoles(TEACH_OR_STAFF), listAssignmentSubmissionsForMarking);
 router.put("/:id/submissions/:submissionId/mark", authenticateUser, authorizeRoles(TEACH_OR_STAFF), markAssignmentSubmission);

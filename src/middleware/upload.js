@@ -95,6 +95,8 @@ const storage = multer.diskStorage({
         "uploads",
         file.fieldname === "exam_pdf_completed" ? "exam-pdf-completed" : "exam-pdf-templates"
       );
+    } else if (file.fieldname === "assignment_pdf_template") {
+      uploadPath = path.join(__dirname, "..", "..", "uploads", "assignment-pdf-templates");
     } else if (file.fieldname === "assignment_answer_file") {
       uploadPath = path.join(__dirname, "..", "..", "uploads", "assignment-answers");
     } else if (file.fieldname === "assignment_pdf_working_paper") {
@@ -171,7 +173,9 @@ const fileFilter = (req, file, cb) => {
     file.fieldname === "teacher_profile_picture" || file.fieldname === "student_profile_picture";
   const isExamPdfWorkingPaper = file.fieldname === "exam_pdf_working_paper";
   const isExamPdfMarkedReturn = file.fieldname === "exam_pdf_marked_return";
+  const isExamPdfTemplate = file.fieldname === "exam_pdf_template" || file.fieldname === "exam_pdf_completed";
   const isExamAnswerFile = file.fieldname === "exam_answer_file";
+  const isAssignmentPdfTemplate = file.fieldname === "assignment_pdf_template";
   const isAssignmentPdfWorkingPaper = file.fieldname === "assignment_pdf_working_paper";
   const isAssignmentPdfMarkedReturn = file.fieldname === "assignment_pdf_marked_return";
   const isAssignmentAnswerFile = file.fieldname === "assignment_answer_file";
@@ -185,7 +189,9 @@ const fileFilter = (req, file, cb) => {
       isTeacherStudentProfilePic ||
       isExamPdfWorkingPaper ||
       isExamPdfMarkedReturn ||
+      isExamPdfTemplate ||
       isExamAnswerFile ||
+      isAssignmentPdfTemplate ||
       isAssignmentPdfWorkingPaper ||
       isAssignmentPdfMarkedReturn ||
       isAssignmentAnswerFile) &&
@@ -234,6 +240,7 @@ const uploadExamPdfWorkingPaper = upload.single("exam_pdf_working_paper");
 const uploadExamPdfMarkedReturn = upload.single("exam_pdf_marked_return");
 const uploadExamPdfTemplate = upload.single("exam_pdf_template");
 const uploadAssignmentAnswerFile = upload.single("assignment_answer_file");
+const uploadAssignmentPdfTemplate = upload.single("assignment_pdf_template");
 const uploadAssignmentPdfWorkingPaper = upload.single("assignment_pdf_working_paper");
 const uploadAssignmentPdfMarkedReturn = upload.single("assignment_pdf_marked_return");
 
@@ -387,6 +394,7 @@ module.exports = {
   uploadExamPdfMarkedReturn,
   uploadExamPdfTemplate,
   uploadAssignmentAnswerFile,
+  uploadAssignmentPdfTemplate,
   uploadAssignmentPdfWorkingPaper,
   uploadAssignmentPdfMarkedReturn,
   uploadFile,

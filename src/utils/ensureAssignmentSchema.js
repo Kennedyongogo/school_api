@@ -72,6 +72,12 @@ async function ensureSubmissionForeignKeys() {
 /** Align assignment tables with Sequelize models when DB predates migrations. */
 async function ensureAssignmentSchema() {
   await addColumnIfMissing(
+    "assignments",
+    "pdf_template_path",
+    `ALTER TABLE assignments ADD COLUMN pdf_template_path TEXT`
+  );
+
+  await addColumnIfMissing(
     "assignment_submissions",
     "status",
     `ALTER TABLE assignment_submissions
