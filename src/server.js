@@ -55,5 +55,8 @@ module.exports = { createServer };
 
 // If running directly (not in cluster), start the server
 if (require.main === module) {
-  createServer();
+  createServer().catch((error) => {
+    console.error("❌ Failed to start server:", error.message);
+    process.exit(1);
+  });
 }
