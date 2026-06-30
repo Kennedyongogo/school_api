@@ -57,6 +57,23 @@ module.exports = (sequelize) => {
         type: DataTypes.DATEONLY,
         allowNull: true,
       },
+      reason: {
+        type: DataTypes.STRING(30),
+        allowNull: false,
+        defaultValue: "term_start",
+      },
+      moved_by_user_id: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        references: { model: "users", key: "id" },
+        onDelete: "SET NULL",
+      },
+      previous_registration_id: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        references: { model: "student_term_registrations", key: "id" },
+        onDelete: "SET NULL",
+      },
     },
     {
       tableName: "student_term_registrations",

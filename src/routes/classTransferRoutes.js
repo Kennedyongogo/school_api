@@ -6,6 +6,9 @@ const {
   listClassTransferLevels,
   listClassTransferLevelStudents,
   moveClassTransferStudent,
+  moveClassTransferStudentsBulk,
+  listClassPlacementRegister,
+  backfillPlacementRegister,
 } = require("../controllers/classTransferController");
 const { authenticateUser, authorizeRoles } = require("../middleware/auth");
 const { ADMIN_PORTAL_API_ROLES } = require("../constants/userRoles");
@@ -28,6 +31,24 @@ router.get(
   authenticateUser,
   authorizeRoles(ADMIN_PORTAL_API_ROLES),
   listClassTransferLevelStudents
+);
+router.get(
+  "/classes/:classId/placement-register",
+  authenticateUser,
+  authorizeRoles(ADMIN_PORTAL_API_ROLES),
+  listClassPlacementRegister
+);
+router.post(
+  "/placement-register/backfill",
+  authenticateUser,
+  authorizeRoles(ADMIN_PORTAL_API_ROLES),
+  backfillPlacementRegister
+);
+router.post(
+  "/students/move-bulk",
+  authenticateUser,
+  authorizeRoles(ADMIN_PORTAL_API_ROLES),
+  moveClassTransferStudentsBulk
 );
 router.post(
   "/students/:studentId/move",

@@ -11,6 +11,11 @@ const {
 const { normalizeEmail, normalizeUsername, duplicateUserWhere } = require("../utils/userIdentity");
 const { convertToRelativePath } = require("../utils/filePath");
 const { unlinkProfilePictureIfExists } = require("../utils/profilePictureStorage");
+const {
+  recordAdmissionPlacement,
+  recordPlacementChange,
+  REGISTRATION_REASONS,
+} = require("../utils/studentPlacementRegisterService");
 
 const userExclude = { exclude: ["password_hash"] };
 
@@ -361,6 +366,7 @@ exports.createStudent = async (req, res) => {
         user_id: bodyUserId,
         ...studentPayload,
       });
+      await recordAdmissionPlacement(student, { actorUserId: req.user?.id });
       const created = await Student.findByPk(student.id, { include: studentListIncludes });
       return res.status(201).json({ success: true, data: created });
     } catch (error) {
@@ -407,6 +413,8 @@ exports.createStudent = async (req, res) => {
       },
       { transaction: t }
     );
+
+    await recordAdmissionPlacement(student, { actorUserId: req.user?.id, transaction: t });
 
     await t.commit();
 
@@ -471,21 +479,48 @@ exports.updateStudent = async (req, res) => {
     const pic = resolveStudentProfilePicture(req, student);
     if (pic !== undefined) patch.profile_picture = pic;
 
-    await student.update(patch);
+    const nextCurriculumId = patch.curriculum_id ?? student.curriculum_id;
+    const nextClassId = patch.curriculum_class_id ?? student.curriculum_class_id;
+    const nextLevelId = patch.curriculum_class_level_id ?? student.curriculum_class_level_id;
+    const placementChanged =
+      String(nextCurriculumId || "") !== String(student.curriculum_id || "") ||
+      String(nextClassId || "") !== String(student.curriculum_class_id || "") ||
+      String(nextLevelId || "") !== String(student.curriculum_class_level_id || "");
 
-    if (body.user && student.user_id) {
-      const user = await User.findByPk(student.user_id);
-      if (user) {
-        const u = body.user;
-        const allowed = ["full_name", "phone", "address", "profile_image", "email", "username"];
-        const userPatch = {};
-        for (const key of allowed) {
-          if (u[key] !== undefined) userPatch[key] = u[key];
-        }
-        if (userPatch.email !== undefined) userPatch.email = normalizeEmail(userPatch.email);
-        if (userPatch.username !== undefined) userPatch.username = normalizeUsername(userPatch.username);
-        if (Object.keys(userPatch).length) await user.update(userPatch);
+    const t = await sequelize.transaction();
+    try {
+      if (placementChanged && nextCurriculumId && nextClassId && nextLevelId) {
+        await recordPlacementChange(student, {
+          curriculumId: nextCurriculumId,
+          curriculumClassId: nextClassId,
+          curriculumClassLevelId: nextLevelId,
+          reason: REGISTRATION_REASONS.PLACEMENT_UPDATE,
+          actorUserId: req.user?.id,
+          transaction: t,
+        });
       }
+
+      await student.update(patch, { transaction: t });
+
+      if (body.user && student.user_id) {
+        const user = await User.findByPk(student.user_id, { transaction: t });
+        if (user) {
+          const u = body.user;
+          const allowed = ["full_name", "phone", "address", "profile_image", "email", "username"];
+          const userPatch = {};
+          for (const key of allowed) {
+            if (u[key] !== undefined) userPatch[key] = u[key];
+          }
+          if (userPatch.email !== undefined) userPatch.email = normalizeEmail(userPatch.email);
+          if (userPatch.username !== undefined) userPatch.username = normalizeUsername(userPatch.username);
+          if (Object.keys(userPatch).length) await user.update(userPatch, { transaction: t });
+        }
+      }
+
+      await t.commit();
+    } catch (txError) {
+      await t.rollback();
+      throw txError;
     }
 
     const updated = await Student.findByPk(student.id, { include: studentListIncludes });

@@ -32,6 +32,27 @@ async function ensureStudentTermRegistrationSchema() {
     CREATE INDEX IF NOT EXISTS student_term_registrations_student_status_idx
       ON student_term_registrations(student_id, status)
   `);
+
+  await sequelize.query(`
+    ALTER TABLE student_term_registrations
+      ADD COLUMN IF NOT EXISTS reason VARCHAR(30) NOT NULL DEFAULT 'term_start'
+  `);
+  await sequelize.query(`
+    ALTER TABLE student_term_registrations
+      ADD COLUMN IF NOT EXISTS moved_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL
+  `);
+  await sequelize.query(`
+    ALTER TABLE student_term_registrations
+      ADD COLUMN IF NOT EXISTS previous_registration_id UUID REFERENCES student_term_registrations(id) ON DELETE SET NULL
+  `);
+  await sequelize.query(`
+    CREATE INDEX IF NOT EXISTS student_term_registrations_class_id_idx
+      ON student_term_registrations(curriculum_class_id)
+  `);
+  await sequelize.query(`
+    CREATE INDEX IF NOT EXISTS student_term_registrations_created_at_idx
+      ON student_term_registrations(created_at DESC)
+  `);
 }
 
 module.exports = { ensureStudentTermRegistrationSchema };

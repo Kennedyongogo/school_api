@@ -5,6 +5,7 @@ const {
   CurriculumClassLevel,
   StudentTermRegistration,
 } = require("../models");
+const { recordTermStart, REGISTRATION_REASONS } = require("./studentPlacementRegisterService");
 
 function dateOnlyToday() {
   return new Date().toISOString().slice(0, 10);
@@ -55,6 +56,7 @@ async function findActiveRegistration(studentId) {
   });
 }
 
+/** Only auto-complete when the registration itself has an explicit end date that has passed. */
 async function completeRegistrationIfEnded(registration, today = dateOnlyToday()) {
   if (!registration || registration.status !== "active") return registration;
   const end = normalizeDateOnly(registration.term_end_date);
@@ -77,16 +79,29 @@ function placementMatchesRegistration(student, registration) {
   );
 }
 
+function registrationTermEnded(registration, today = dateOnlyToday()) {
+  if (!registration) return false;
+  if (registration.status === "completed") return true;
+  const end = normalizeDateOnly(registration.term_end_date);
+  return Boolean(end && isAfterDate(today, end));
+}
+
 function buildTermStatusPayload(student, registration, today = dateOnlyToday()) {
   const level = student?.curriculum_class_level || null;
-  const termStart = normalizeDateOnly(registration?.term_start_date ?? level?.start_date);
-  const termEnd = normalizeDateOnly(registration?.term_end_date ?? level?.end_date);
-  const termEnded = Boolean(termEnd && isAfterDate(today, termEnd));
+  const classScheduleStart = normalizeDateOnly(level?.start_date);
+  const classScheduleEnd = normalizeDateOnly(level?.end_date);
+  const studentStartedOn = normalizeDateOnly(registration?.started_on);
+  const studentTermStart = normalizeDateOnly(registration?.term_start_date ?? studentStartedOn);
+  const studentTermEnd = normalizeDateOnly(registration?.term_end_date);
+  const termEnded = registrationTermEnded(registration, today);
   const placementOk = placementMatchesRegistration(student, registration);
+  const termStarted =
+    registration?.reason === REGISTRATION_REASONS.TERM_START;
   const portalUnlocked =
     Boolean(registration) &&
     registration.status === "active" &&
     placementOk &&
+    termStarted &&
     !termEnded;
 
   let canStartTerm = false;
@@ -96,16 +111,19 @@ function buildTermStatusPayload(student, registration, today = dateOnlyToday()) 
     blockReason = "Your class and term are not set yet. Ask the school to complete your enrollment.";
   } else if (!level) {
     blockReason = "Your assigned term could not be found. Contact the school office.";
-  } else if (termEnd && isAfterDate(today, termEnd)) {
-    blockReason = "This term has ended. Contact the school to move you to the next term or class.";
   } else if (portalUnlocked) {
     blockReason = null;
+  } else if (registration && registration.status === "active" && termEnded && placementOk) {
+    blockReason = "Your current term registration has ended. Contact the school to move you to the next term.";
   } else if (registration && registration.status === "active" && !placementOk) {
     blockReason = "Your class or term was updated. Start the new term from your profile.";
     canStartTerm = true;
+  } else if (registration && registration.status === "active" && placementOk && !termStarted) {
+    canStartTerm = true;
+    blockReason = `Start ${level.name} to unlock classes, exams, assignments, and report cards. You can begin anytime — admission dates vary.`;
   } else {
     canStartTerm = true;
-    blockReason = "Start your term to unlock classes, exams, assignments, and report cards.";
+    blockReason = `Start ${level.name} to unlock classes, exams, assignments, and report cards. You can begin anytime — admission dates vary.`;
   }
 
   return {
@@ -118,9 +136,18 @@ function buildTermStatusPayload(student, registration, today = dateOnlyToday()) 
           id: level.id,
           name: level.name,
           level_order: level.level_order,
-          start_date: termStart,
-          end_date: termEnd,
+          /** Student's personal term window (after they click Start). */
+          start_date: studentTermStart,
+          end_date: studentTermEnd,
+          started_on: studentStartedOn,
           term_ended: termEnded,
+        }
+      : null,
+    /** Class-wide planned schedule — informational only; does not gate portal access. */
+    class_schedule: level
+      ? {
+          start_date: classScheduleStart,
+          end_date: classScheduleEnd,
         }
       : null,
     placement: {
@@ -139,6 +166,7 @@ function buildTermStatusPayload(student, registration, today = dateOnlyToday()) 
           term_end_date: registration.term_end_date,
           status: registration.status,
           completed_on: registration.completed_on,
+          reason: registration.reason,
           placement_matches: placementOk,
         }
       : null,
@@ -185,13 +213,6 @@ async function startStudentTermForUser(userId) {
     throw err;
   }
 
-  const termEnd = normalizeDateOnly(level.end_date);
-  if (termEnd && isAfterDate(today, termEnd)) {
-    const err = new Error("This term has already ended. Contact the school to enroll you in the next term.");
-    err.status = 400;
-    throw err;
-  }
-
   let registration = await findActiveRegistration(student.id);
   if (registration) {
     registration = await completeRegistrationIfEnded(registration);
@@ -200,7 +221,8 @@ async function startStudentTermForUser(userId) {
   if (
     registration &&
     registration.status === "active" &&
-    placementMatchesRegistration(student, registration)
+    placementMatchesRegistration(student, registration) &&
+    registration.reason === REGISTRATION_REASONS.TERM_START
   ) {
     return {
       created: false,
@@ -208,28 +230,11 @@ async function startStudentTermForUser(userId) {
     };
   }
 
-  if (registration && registration.status === "active") {
-    await registration.update({
-      status: "completed",
-      completed_on: today,
-    });
-  }
-
-  const termStart = normalizeDateOnly(level.start_date) || today;
-
-  registration = await StudentTermRegistration.create({
-    student_id: student.id,
-    curriculum_id: student.curriculum_id,
-    curriculum_class_id: student.curriculum_class_id,
-    curriculum_class_level_id: student.curriculum_class_level_id,
-    started_on: today,
-    term_start_date: termStart,
-    term_end_date: termEnd,
-    status: "active",
-  });
+  const hadActive = Boolean(registration && registration.status === "active");
+  registration = await recordTermStart(student, { actorUserId: userId });
 
   return {
-    created: true,
+    created: !hadActive || registration?.reason === REGISTRATION_REASONS.TERM_START,
     status: buildTermStatusPayload(student, registration, today),
   };
 }

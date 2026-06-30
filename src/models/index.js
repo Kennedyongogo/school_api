@@ -353,6 +353,14 @@ const setupAssociations = () => {
       foreignKey: "curriculum_class_level_id",
       as: "curriculum_class_level",
     });
+    StudentTermRegistration.belongsTo(User, {
+      foreignKey: "moved_by_user_id",
+      as: "moved_by_user",
+    });
+    StudentTermRegistration.belongsTo(StudentTermRegistration, {
+      foreignKey: "previous_registration_id",
+      as: "previous_registration",
+    });
 
     Department.belongsTo(Teacher, {
       foreignKey: "head_of_department",
