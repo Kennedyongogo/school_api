@@ -986,7 +986,7 @@ exports.initiateTimetableLessonLiveSession = async (req, res) => {
         (String(reusable.join_url || "").trim() !== "" ||
           (isInAppVideoPlatform(reusable.platform) && String(reusable.meeting_id || "").trim() !== ""));
       if (reusableReady) {
-        if (isInAppVideoPlatform(reusable.platform) && !String(reusable.join_url || "").trim()) {
+        if (isInAppVideoPlatform(reusable.platform)) {
           const linkUrls = webrtcRoomService.urlsForLiveClassRow(reusable.id);
           await reusable.update({
             join_url: linkUrls.join_url,
